@@ -1,0 +1,20 @@
+# Compiled binary
+medbook
+medbook-*
+*.exe
+
+# Environment — contains DB credentials, never commit
+.env
+.env.*
+!.env.example
+
+# Go test cache / coverage
+*.test
+*.out
+coverage.html
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
