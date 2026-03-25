@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>API Docs — MedBook</title>
+<style>
+:root {
+  --blue:    #1a56db;
+  --blue-dk: #1142af;
+  --green:   #057a55;
+  --gray:    #6b7280;
+  --bg:      #f3f4f6;
+  --card:    #ffffff;
+  --border:  #e5e7eb;
+  --text:    #111827;
+  --muted:   #6b7280;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
+header { background: var(--blue); color: #fff; padding: .9rem 1.5rem;
+         display: flex; align-items: center; gap: 1rem; }
+header h1 { font-size: 1.4rem; font-weight: 700; }
+header p  { font-size: .8rem; opacity: .85; }
+nav.topnav {
+  background: var(--blue-dk); display: flex; align-items: center;
+  gap: .25rem; padding: .3rem 1.5rem;
+}
+nav.topnav a {
+  color: rgba(255,255,255,.85); text-decoration: none;
+  font-size: .82rem; font-weight: 500; padding: .3rem .65rem;
+  border-radius: 4px; transition: background .12s;
+}
+nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); color: #fff; }
+
+/* Fallback table — visible only if Swagger UI cdn is unavailable */
+main { max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+#fallback { display: none; }
+h2 { font-size: 1.1rem; font-weight: 700; margin: 1.5rem 0 .6rem; color: var(--text); }
+.ep-table { width: 100%; border-collapse: collapse; font-size: .88rem; margin-bottom: 1.5rem; }
+.ep-table th {
+  background: #f9fafb; text-align: left; padding: .5rem .8rem;
+  font-size: .75rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--muted); border-bottom: 2px solid var(--border);
+}
+.ep-table td { padding: .55rem .8rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.ep-table tr:last-child td { border-bottom: none; }
+.method { font-family: monospace; font-weight: 700; color: #fff; padding: .15rem .45rem;
+          border-radius: 4px; font-size: .78rem; background: var(--green); }
+.ep-path { font-family: monospace; font-size: .9rem; }
+pre { background: #1e1e2e; color: #cdd6f4; padding: 1rem 1.2rem; border-radius: 8px;
+      overflow-x: auto; font-size: .82rem; margin: .5rem 0 1rem; }
+a.spec-link {
+  display: inline-block; margin-top: 1rem; padding: .4rem .9rem;
+  background: var(--blue); color: #fff; border-radius: 5px; font-size: .85rem;
+  text-decoration: none; font-weight: 600;
+}
+a.spec-link:hover { background: var(--blue-dk); }
+footer { text-align: center; font-size: .78rem; color: var(--muted); padding: 2rem 0 1rem; }
+footer a { color: var(--gray); }
+
+/* Swagger UI container */
+#swagger-ui { margin-top: 1rem; }
+</style>
+<link rel="stylesheet" type="text/css" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>💊 MedBook</h1>
+    <p>Banca Dati Farmaci AIFA — Consultazione offline</p>
+  </div>
+</header>
+<nav class="topnav">
+  <a href="/medbook">🔍 Ricerca</a>
+  <a href="/api/docs" class="active">📖 API Docs</a>
+</nav>
+
+<!-- Swagger UI (requires internet for CDN assets) -->
+<div id="swagger-ui"></div>
+
+<!-- Fallback: shown if Swagger UI fails to load -->
+<main id="fallback">
+  <h2>API Reference — MedBook</h2>
+  <p style="color:var(--muted);font-size:.85rem;margin-bottom:1rem">
+    L'interfaccia Swagger UI richiede accesso a internet (CDN). Di seguito la documentazione in formato tabellare.
+    &nbsp;<a class="spec-link" href="/api/openapi.json">Scarica OpenAPI JSON</a>
+  </p>
+
+  <h2>Endpoints</h2>
+  <table class="ep-table">
+    <thead>
+      <tr><th>Metodo</th><th>Path</th><th>Descrizione</th><th>Parametri</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/api/search</td>
+        <td>Ricerca farmaci fulltext</td>
+        <td><code>q</code> (testo, obbligatorio), <code>p</code> (pagina, default 0)</td>
+      </tr>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/api/autocomplete</td>
+        <td>Suggerimenti live (min 3 caratteri)</td>
+        <td><code>q</code> (prefisso, min 3 char)</td>
+      </tr>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/api/drug/{codFarmaco}</td>
+        <td>Dettaglio farmaco completo (JSON)</td>
+        <td><code>codFarmaco</code> (path)</td>
+      </tr>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/api/package/{codiceAIC}</td>
+        <td>Singola confezione per codice AIC</td>
+        <td><code>codiceAIC</code> (path)</td>
+      </tr>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/api/atc/{code}</td>
+        <td>Farmaci per codice ATC</td>
+        <td><code>code</code> (path, es. N02BE01), <code>p</code> (pagina)</td>
+      </tr>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/api/shortages</td>
+        <td>Farmaci temporaneamente carenti (AIFA)</td>
+        <td><code>q</code> (filtro testo), <code>p</code> (pagina)</td>
+      </tr>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/api/stats</td>
+        <td>Statistiche database</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/api/openapi.json</td>
+        <td>Specifica OpenAPI 3.0</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><span class="method">GET</span></td>
+        <td class="ep-path">/ping</td>
+        <td>Health check</td>
+        <td>—</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <h2>Esempio — /api/search</h2>
+  <pre>GET /api/search?q=tachipirina&amp;p=0
+
+{
+  "total": 14,
+  "page": 0,
+  "results": [
+    {
+      "codFarmaco": "001515",
+      "denominazione": "TACHIPIRINA",
+      "ragioneSociale": "ANGELINI S.P.A.",
+      "codiceAtc": "N02BE01",
+      "paAssociati": "PARACETAMOLO",
+      "statoAmm": "AUTORIZZATA",
+      "forme": ["COMPRESSE", "SUPPOSTE"],
+      "numConfezioni": 8
+    }
+  ]
+}</pre>
+
+  <h2>Esempio — /api/autocomplete</h2>
+  <pre>GET /api/autocomplete?q=tach
+
+[
+  { "denominazione": "TACHIPIRINA", "codFarmaco": "001515",
+    "paAssociati": "PARACETAMOLO", "codiceATC": "N02BE01",
+    "ragioneSociale": "ANGELINI S.P.A." }
+]</pre>
+</main>
+
+<footer>
+  Dati: <a href="https://www.aifa.gov.it" target="_blank">AIFA — Agenzia Italiana del Farmaco</a>
+  (licenza CC-BY 4.0) &nbsp;|&nbsp; MedBook — consultazione offline
+</footer>
+
+<script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+<script>
+(function () {
+  if (typeof SwaggerUIBundle === 'undefined') {
+    // CDN unavailable — show fallback table
+    document.getElementById('fallback').style.display = 'block';
+    return;
+  }
+  SwaggerUIBundle({
+    url: '/api/openapi.json',
+    dom_id: '#swagger-ui',
+    presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
+    layout: 'BaseLayout',
+    deepLinking: true,
+    defaultModelsExpandDepth: 1,
+  });
+}());
+</script>
+
+</body>
+</html>

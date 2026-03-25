@@ -1,0 +1,47 @@
+name: CI
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: medbook
+          POSTGRES_PASSWORD: medbook
+          POSTGRES_DB: medbook
+        ports:
+        - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U medbook" --health-interval 5s --health-timeout 5s --health-retries 10
+
+    env:
+      DATABASE_URL: postgres://medbook:medbook@localhost:5432/medbook?sslmode=disable
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - uses: actions/setup-go@v5
+      with:
+        go-version-file: go.mod
+        cache: true
+
+    - name: Vet
+      run: go vet ./...
+
+    - name: Build
+      run: CGO_ENABLED=0 go build -o medbook ./cmd/
+
+    - name: Migrate
+      run: ./medbook migrate
+
+    - name: Tests
+      run: go test ./...

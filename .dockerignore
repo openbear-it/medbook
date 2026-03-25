@@ -1,0 +1,22 @@
+# Build artifacts
+medbook
+*.exe
+
+# Dev/test files
+.env
+.env.*
+*.test
+
+# Git & IDE
+.git/
+.gitignore
+.github/
+.vscode/
+
+# Docs
+README.md
+*.md
+
+# Kubernetes / Compose manifests (not needed inside image)
+docker-compose*.yml
+k8s/

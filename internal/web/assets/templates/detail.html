@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{.Detail.Denominazione}} — MedBook</title>
+<style>
+:root {
+  --blue:    #1a56db;
+  --blue-dk: #1142af;
+  --green:   #057a55;
+  --red:     #c81e1e;
+  --gray:    #6b7280;
+  --bg:      #f3f4f6;
+  --card:    #ffffff;
+  --border:  #e5e7eb;
+  --text:    #111827;
+  --muted:   #6b7280;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
+
+header { background: var(--blue); color: #fff; padding: .9rem 1.5rem;
+         display: flex; align-items: center; gap: 1rem; }
+header h1 { font-size: 1.4rem; font-weight: 700; }
+header p  { font-size: .8rem; opacity: .85; }
+
+main { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+
+/* ── Breadcrumb ── */
+.bc { font-size: .83rem; color: var(--muted); margin-bottom: 1.2rem; }
+.bc a { color: var(--blue); text-decoration: none; }
+.bc a:hover { text-decoration: underline; }
+
+/* ── Drug header ── */
+.drug-header {
+  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.4rem 1.6rem; margin-bottom: 1.2rem;
+}
+.drug-title { font-size: 1.6rem; font-weight: 800; color: var(--blue); margin-bottom: .15rem; }
+.drug-company { font-size: .95rem; color: var(--muted); margin-bottom: .8rem; }
+.meta-row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+
+/* ── Tags / badges ── */
+.tag {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .25rem .6rem; border-radius: 14px; font-size: .79rem;
+  border: 1px solid; font-weight: 500;
+}
+.tag-blue  { background: #eff6ff; color: #1d4ed8; border-color: #bfdbfe; }
+.tag-green { background: #f0fdf4; color: var(--green); border-color: #bbf7d0; }
+.tag-purple{ background: #f5f3ff; color: #6d28d9; border-color: #ddd6fe; }
+.badge {
+  display: inline-block; padding: .2rem .6rem; border-radius: 5px;
+  font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .4px;
+}
+.badge-green { background: #d1fae5; color: var(--green); }
+.badge-red   { background: #fee2e2; color: var(--red); }
+.badge-gray  { background: #f3f4f6; color: var(--gray); }
+
+/* ── Section card ── */
+.section { margin-bottom: 1.5rem; }
+.section h2 {
+  font-size: .85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
+  color: var(--muted); border-bottom: 2px solid var(--border);
+  padding-bottom: .4rem; margin-bottom: 1rem;
+}
+
+/* ── Form group (accordion-like) in package list ── */
+.forma-group { margin-bottom: 1.4rem; }
+.forma-label {
+  font-size: .9rem; font-weight: 600; color: var(--text);
+  margin-bottom: .6rem; display: flex; align-items: center; gap: .5rem;
+}
+
+/* ── Package table ── */
+.pkg-table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+.pkg-table th {
+  background: #f9fafb; text-align: left; padding: .5rem .75rem;
+  font-size: .75rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--muted); border-bottom: 2px solid var(--border);
+}
+.pkg-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+.pkg-table tr:last-child td { border-bottom: none; }
+.pkg-table tr:hover td { background: #f9fafb; }
+.pkg-table .aic { font-family: monospace; font-size: .82rem; color: var(--muted); }
+
+/* ── Active ingredients list ── */
+.pa-list { display: flex; flex-wrap: wrap; gap: .3rem; }
+.pa-pill {
+  padding: .18rem .5rem; background: #eff6ff; color: #1e40af;
+  border-radius: 4px; font-size: .78rem; border: 1px solid #bfdbfe;
+}
+
+/* ── Doc links ── */
+.doc-links { display: flex; gap: .6rem; flex-wrap: wrap; }
+.doc-btn {
+  padding: .3rem .8rem; border-radius: 5px; font-size: .82rem; font-weight: 600;
+  text-decoration: none; border: 1.5px solid;
+  transition: background .15s;
+}
+.doc-btn.fi  { color: #0f766e; border-color: #99f6e4; background: #f0fdfa; }
+.doc-btn.fi:hover  { background: #ccfbf1; }
+.doc-btn.rcp { color: #1d4ed8; border-color: #bfdbfe; background: #eff6ff; }
+.doc-btn.rcp:hover { background: #dbeafe; }
+
+/* ── Shortage alert ── */
+.shortage-alert {
+  background: #fff1f2; border: 1.5px solid #fda4af; border-radius: 8px;
+  padding: .9rem 1.2rem; margin-bottom: 1.2rem;
+}
+.shortage-alert h3 { font-size: .9rem; font-weight: 700; color: #be123c; margin-bottom: .5rem; }
+.shortage-item { font-size: .83rem; padding: .35rem 0; border-bottom: 1px solid #fecdd3; }
+.shortage-item:last-child { border-bottom: none; }
+.shortage-name { font-weight: 600; color: #9f1239; }
+.shortage-meta { color: #6b7280; margin-top: .1rem; }
+
+/* ── Offline note ── */
+.offline-note {
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
+  padding: .7rem 1rem; font-size: .82rem; color: #92400e; margin-bottom: 1rem;
+}
+
+footer { text-align: center; font-size: .78rem; color: var(--muted); padding: 2rem 0 1rem; }
+footer a { color: var(--gray); }
+
+/* ── Nav bar ── */
+nav.topnav {
+  background: var(--blue-dk); display: flex; align-items: center;
+  gap: .25rem; padding: .3rem 1.5rem;
+}
+nav.topnav a {
+  color: rgba(255,255,255,.85); text-decoration: none;
+  font-size: .82rem; font-weight: 500; padding: .3rem .65rem;
+  border-radius: 4px; transition: background .12s;
+}
+nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); color: #fff; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>💊 MedBook</h1>
+    <p>Banca Dati Farmaci AIFA — Consultazione offline</p>
+  </div>
+</header>
+<nav class="topnav">
+  <a href="/medbook">🔍 Ricerca</a>
+  <a href="/api/docs">📖 API Docs</a>
+</nav>
+
+<main>
+  <!-- Breadcrumb -->
+  <nav class="bc">
+    <a href="/medbook{{if .Query}}?q={{.Query}}{{end}}">← Torna ai risultati</a>
+    &nbsp;/&nbsp; {{.Detail.Denominazione}}
+  </nav>
+
+  <!-- Drug header -->
+  <div class="drug-header">
+    <div class="drug-title">{{.Detail.Denominazione}}</div>
+    <div class="drug-company">{{.Detail.RagioneSociale}}</div>
+    <div class="meta-row">
+      {{if .Detail.CodiceATC}}
+        <span class="tag tag-blue">
+          ATC: {{.Detail.CodiceATC}}
+          {{if .Detail.ATCDesc}} — {{.Detail.ATCDesc}}{{end}}
+        </span>
+      {{end}}
+      {{if .Detail.PaAssociati}}
+        <span class="tag tag-green">{{.Detail.PaAssociati}}</span>
+      {{end}}
+      <span class="tag tag-purple">Cod. farmaco: {{.Detail.CodFarmaco}}</span>
+    </div>
+  </div>
+
+  <!-- Shortage alert (shown only if any package is currently scarce) -->
+  {{if .Detail.Shortages}}
+  <div class="shortage-alert">
+    <h3>⚠ Carenze AIFA ({{len .Detail.Shortages}} confezioni)</h3>
+    {{range .Detail.Shortages}}
+    <div class="shortage-item">
+      <div class="shortage-name">{{.NomeMedicinale}}{{if .FormaDosaggio}} — {{.FormaDosaggio}}{{end}}</div>
+      <div class="shortage-meta">
+        Inizio: {{.DataInizio}}{{if .FinePresunta}} &nbsp;·&nbsp; Fine presunta: {{.FinePresunta}}{{end}}
+        {{if .Fascia}} &nbsp;·&nbsp; Fascia: <strong>{{.Fascia}}</strong>{{end}}
+        {{if .Motivazioni}} &nbsp;·&nbsp; {{.Motivazioni}}{{end}}
+      </div>
+      {{if .SuggerimentiAIFA}}<div class="shortage-meta" style="color:#166534">💡 {{.SuggerimentiAIFA}}</div>{{end}}
+    </div>
+    {{end}}
+  </div>
+  {{end}}
+
+  <!-- Note: doc links require internet -->
+  <div class="offline-note">
+    ⚡ I link al Foglio Illustrativo (FI) e al Riassunto delle Caratteristiche del Prodotto (RCP)
+    richiedono la connessione ad internet e puntano direttamente all'API AIFA.
+  </div>
+
+  <!-- Packages grouped by pharmaceutical form -->
+  <div class="section">
+    <h2>Confezioni ({{len .Detail.Confezioni}} totali)</h2>
+
+    {{range .Detail.FormaGroups}}
+    <div class="forma-group">
+      <div class="forma-label">
+        <span class="tag tag-purple">{{.Forma}}</span>
+      </div>
+      <table class="pkg-table">
+        <thead>
+          <tr>
+            <th>Codice AIC</th>
+            <th>Descrizione</th>
+            <th>Stato</th>
+            <th>Fornitura</th>
+            <th>Principi attivi</th>
+            <th>Documenti</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Confezioni}}
+          <tr>
+            <td class="aic">{{.CodiceAIC}}</td>
+            <td>{{.Descrizione}}</td>
+            <td><span class="badge {{badgeClass .StatoAmministrativo}}">{{.StatoAmministrativo}}</span></td>
+            <td style="max-width:200px; font-size:.8rem">{{.Fornitura}}</td>
+            <td>
+              {{if .PA}}
+                <div class="pa-list">
+                  {{range .PA}}
+                    <span class="pa-pill">
+                      {{.Nome}}
+                      {{if and .Quantita (ne .Quantita "0") (ne .Quantita "0.0")}}
+                        {{.Quantita}} {{.UnitaMisura}}
+                      {{end}}
+                    </span>
+                  {{end}}
+                </div>
+              {{else if .PaAssociati}}
+                <small style="color:var(--muted)">{{.PaAssociati}}</small>
+              {{else}}
+                <small style="color:var(--muted)">—</small>
+              {{end}}
+            </td>
+            <td>
+              {{if hasLinks .LinkFI .LinkRCP}}
+                <div class="doc-links">
+                  {{if .LinkFI}}<a class="doc-btn fi"  href="{{.LinkFI}}"  target="_blank" rel="noopener">FI</a>{{end}}
+                  {{if .LinkRCP}}<a class="doc-btn rcp" href="{{.LinkRCP}}" target="_blank" rel="noopener">RCP</a>{{end}}
+                </div>
+              {{else}}
+                <small style="color:var(--muted)">—</small>
+              {{end}}
+            </td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{end}}
+  </div>
+</main>
+
+<footer>
+  Dati: <a href="https://www.aifa.gov.it" target="_blank">AIFA — Agenzia Italiana del Farmaco</a>
+  (licenza CC-BY 4.0) &nbsp;|&nbsp; MedBook — consultazione offline
+</footer>
+
+</body>
+</html>
