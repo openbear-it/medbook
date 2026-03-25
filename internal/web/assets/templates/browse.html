@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Catalogo Farmaci A–Z — MedBook</title>
+<style>
+:root {
+  --blue:    #1a56db;
+  --blue-dk: #1142af;
+  --green:   #057a55;
+  --red:     #c81e1e;
+  --gray:    #6b7280;
+  --bg:      #f3f4f6;
+  --card:    #ffffff;
+  --border:  #e5e7eb;
+  --text:    #111827;
+  --muted:   #6b7280;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
+
+header { background: var(--blue); color: #fff; padding: .9rem 1.5rem;
+         display: flex; align-items: center; gap: 1rem; }
+header h1 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 1.4rem; font-weight: 700; color: #fff; margin: 0; padding: 0;
+            line-height: 1.5; letter-spacing: normal; text-transform: none; }
+header p  { font-size: .8rem; opacity: .85; }
+
+nav.topnav {
+  background: var(--blue-dk); display: flex; align-items: center;
+  gap: .25rem; padding: .3rem 1.5rem; flex-wrap: wrap;
+}
+nav.topnav a {
+  color: rgba(255,255,255,.85); text-decoration: none;
+  font-size: .82rem; font-weight: 500; padding: .3rem .65rem;
+  border-radius: 4px; transition: background .12s;
+}
+nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); color: #fff; }
+
+main { max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+
+/* ── Search bar ── */
+.search-wrap { display: flex; gap: .5rem; margin-bottom: 1rem; }
+.search-wrap input[type=text] {
+  flex: 1; padding: .65rem 1rem; border: 1.5px solid var(--border);
+  border-radius: 6px; font-size: 1rem; outline: none; transition: border-color .15s;
+}
+.search-wrap input[type=text]:focus { border-color: var(--blue); }
+.search-wrap button {
+  padding: .65rem 1.4rem; background: var(--blue); color: #fff;
+  border: none; border-radius: 6px; font-size: .95rem; cursor: pointer;
+  transition: background .15s;
+}
+.search-wrap button:hover { background: var(--blue-dk); }
+
+/* ── A-Z letter strip ── */
+.az-strip {
+  display: flex; flex-wrap: wrap; gap: .3rem; margin-bottom: 1.2rem;
+}
+.az-strip a, .az-strip span {
+  display: inline-block; min-width: 2rem; text-align: center;
+  padding: .25rem .4rem; border-radius: 5px; font-size: .82rem; font-weight: 600;
+  text-decoration: none; border: 1px solid var(--border); color: var(--text);
+  transition: background .12s, border-color .12s;
+}
+.az-strip a:hover    { background: #eff6ff; border-color: var(--blue); color: var(--blue); }
+.az-strip a.active   { background: var(--blue); color: #fff; border-color: var(--blue); }
+.az-strip .az-all    { background: #f9fafb; color: var(--muted); }
+.az-strip .az-all:hover { background: #eff6ff; color: var(--blue); border-color: var(--blue); }
+.az-strip .az-all.active { background: var(--blue); color: #fff; border-color: var(--blue); }
+
+/* ── Results header ── */
+.results-hdr { color: var(--muted); font-size: .88rem; margin-bottom: .9rem; }
+.results-hdr strong { color: var(--text); }
+
+/* ── Drug card ── */
+.drug-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 1rem 1.2rem; margin-bottom: .75rem;
+  transition: box-shadow .15s, border-color .15s;
+}
+.drug-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.09); border-color: #c0c7d3; }
+.drug-card a { text-decoration: none; color: inherit; display: block; }
+.drug-name    { font-size: 1.05rem; font-weight: 700; color: var(--blue); margin-bottom: .2rem; }
+.drug-company { font-size: .85rem; color: var(--muted); margin-bottom: .5rem;
+                text-decoration: none; display: block; }
+.drug-meta    { display: flex; flex-wrap: wrap; gap: .4rem; font-size: .8rem; }
+
+.tag {
+  display: inline-flex; align-items: center; gap: .3rem; padding: .2rem .55rem;
+  border-radius: 12px; background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe;
+  font-size: .78rem; text-decoration: none;
+}
+.tag:hover { background: #dbeafe; }
+.tag.atc   { background: #f0fdf4; color: var(--green); border-color: #bbf7d0; }
+.tag.forme { background: #fefce8; color: #854d0e;    border-color: #fde047; }
+.tag.qty   { background: #f5f3ff; color: #6d28d9;    border-color: #ddd6fe; }
+
+.badge {
+  display: inline-block; padding: .15rem .5rem; border-radius: 4px;
+  font-size: .74rem; font-weight: 600; text-transform: uppercase;
+}
+.badge-green { background: #d1fae5; color: var(--green); }
+.badge-red   { background: #fee2e2; color: var(--red);   }
+.badge-gray  { background: #f3f4f6; color: var(--gray);  }
+
+/* ── Pagination ── */
+.pagination { display: flex; gap: .4rem; margin-top: 1.5rem; flex-wrap: wrap; }
+.pagination a, .pagination span {
+  padding: .35rem .7rem; border-radius: 5px; font-size: .85rem; text-decoration: none;
+  border: 1px solid var(--border); color: var(--text);
+}
+.pagination a:hover { background: #eff6ff; border-color: var(--blue); }
+.pagination .active  { background: var(--blue); color: #fff; border-color: var(--blue); }
+.pagination .disabled { color: var(--muted); pointer-events: none; }
+
+footer { text-align: center; font-size: .78rem; color: var(--muted); padding: 2rem 0 1rem; }
+footer a { color: var(--gray); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>💊 MedBook</h1>
+    <p>Banca Dati Farmaci AIFA — Consultazione offline</p>
+  </div>
+</header>
+<nav class="topnav">
+  <a href="/search">🔍 Ricerca</a>
+  <a href="/drugs" class="active">📋 Catalogo A–Z</a>
+  <a href="/drugs/ingredient">🧪 Per P.A.</a>
+  <a href="/drugs/company">🏭 Per Azienda</a>
+  <a href="/api/docs">📖 API</a>
+</nav>
+
+<main>
+
+  <!-- Text filter -->
+  <form method="get" action="/drugs" class="search-wrap">
+    <input type="text" name="q" value="{{.Query}}"
+           placeholder="Filtra per nome, principio attivo, azienda…"
+           autocomplete="off" spellcheck="false">
+    {{if .Letter}}<input type="hidden" name="l" value="{{.Letter}}">{{end}}
+    <button type="submit">Filtra</button>
+    {{if or .Query .Letter}}
+    <a href="/drugs" style="padding:.65rem .9rem;background:#f3f4f6;border:1.5px solid var(--border);border-radius:6px;text-decoration:none;color:var(--text);white-space:nowrap">✕ Cancella</a>
+    {{end}}
+  </form>
+
+  <!-- A–Z letter strip -->
+  <div class="az-strip">
+    <a href="/drugs{{if .Query}}?q={{.Query}}{{end}}" class="az-all{{if not .Letter}} active{{end}}">Tutti</a>
+    {{range alpha}}
+      <a href="/drugs?l={{.}}{{if $.Query}}&q={{$.Query}}{{end}}"
+         {{if eq $.Letter .}}class="active"{{end}}>{{.}}</a>
+    {{end}}
+  </div>
+
+  <!-- Results header -->
+  <div class="results-hdr">
+    {{if or .Query .Letter}}
+      <strong>{{.Total}}</strong> farmac{{if ne .Total 1}}i{{else}}o{{end}} trovato{{if ne .Total 1}}i{{end}}
+      {{if .Letter}} che iniziano per "<strong>{{.Letter}}</strong>"{{end}}
+      {{if .Query}} corrispondenti a "<strong>{{.Query}}</strong>"{{end}}
+      — pagina {{add .Page 1}} di {{.Pages}}
+    {{else}}
+      <strong>{{.Total}}</strong> farmaci nel catalogo — pagina {{add .Page 1}} di {{.Pages}}
+    {{end}}
+  </div>
+
+  <!-- Drug cards -->
+  {{range .Results}}
+  <div class="drug-card">
+    <a href="/drug/{{.CodFarmaco}}">
+      <div class="drug-name">{{.Denominazione}}</div>
+    </a>
+    <a class="drug-company" href="/drugs/company?q={{.RagioneSociale}}">{{.RagioneSociale}}</a>
+    <div class="drug-meta">
+      {{if .CodiceATC}}<span class="tag atc">ATC: {{.CodiceATC}}</span>{{end}}
+      {{if .PaAssociati}}<a class="tag" href="/drugs/ingredient?q={{.PaAssociati | firstPA}}">{{.PaAssociati}}</a>{{end}}
+      {{range .Forme}}<span class="tag forme">{{.}}</span>{{end}}
+      <span class="tag qty">{{.NumConfezioni}} confezioni</span>
+      {{if .PrezzoSSN}}<span class="tag" style="background:#f0fdf4;color:#166534;border-color:#86efac">💶 €&nbsp;{{.PrezzoSSN}} SSN</span>{{end}}
+      <span class="badge {{badgeClass .StatoAmm}}">{{.StatoAmm}}</span>
+    </div>
+  </div>
+  {{end}}
+
+  <!-- Pagination -->
+  {{if gt .Pages 1}}
+  <nav class="pagination">
+    {{if gt .Page 0}}
+      <a href="/drugs?q={{.Query}}&l={{.Letter}}&p={{sub .Page 1}}">← Prec</a>
+    {{else}}
+      <span class="disabled">← Prec</span>
+    {{end}}
+
+    {{range seq .Page .Pages}}
+      {{if eq . $.Page}}
+        <span class="active">{{add . 1}}</span>
+      {{else}}
+        <a href="/drugs?q={{$.Query}}&l={{$.Letter}}&p={{.}}">{{add . 1}}</a>
+      {{end}}
+    {{end}}
+
+    {{if lt .Page (sub .Pages 1)}}
+      <a href="/drugs?q={{.Query}}&l={{.Letter}}&p={{add .Page 1}}">Succ →</a>
+    {{else}}
+      <span class="disabled">Succ →</span>
+    {{end}}
+  </nav>
+  {{end}}
+
+</main>
+
+<footer>
+  Dati: <a href="https://www.aifa.gov.it" target="_blank">AIFA — Agenzia Italiana del Farmaco</a>
+  (licenza CC-BY 4.0) &nbsp;|&nbsp; MedBook — consultazione offline
+</footer>
+</body>
+</html>

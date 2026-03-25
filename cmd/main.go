@@ -45,6 +45,22 @@ func main() {
 		_, err = s.SyncShortages(ctx)
 		exitOn(err, "sync carenze")
 
+	case "sync-prezzi":
+		store, err := db.New(ctx, dsn)
+		exitOn(err, "connessione DB")
+		defer store.Close()
+		s := syncer.New(store)
+		_, err = s.SyncPrezziEquivalenti(ctx)
+		exitOn(err, "sync prezzi equivalenti")
+
+	case "sync-orfani":
+		store, err := db.New(ctx, dsn)
+		exitOn(err, "connessione DB")
+		defer store.Close()
+		s := syncer.New(store)
+		_, err = s.SyncFarmaciOrfani(ctx)
+		exitOn(err, "sync farmaci orfani")
+
 	case "serve":
 		store, err := db.New(ctx, dsn)
 		exitOn(err, "connessione DB")
@@ -80,6 +96,8 @@ Comandi:
   medbook migrate          Crea o aggiorna lo schema del database
   medbook sync             Scarica i dati AIFA e popola il database (una tantum/periodico)
   medbook sync-shortages   Aggiorna solo le carenze (più veloce del sync completo)
+  medbook sync-prezzi      Aggiorna solo la Lista Trasparenza (prezzi + equivalenti)
+  medbook sync-orfani      Aggiorna solo la lista farmaci orfani
   medbook serve            Avvia il server web locale per consultazione
   medbook stats            Mostra statistiche del database
 

@@ -76,6 +76,7 @@ type SearchResult struct {
 	CodiceATC       string
 	PaAssociati     string
 	NumConfezioni   int64
+	PrezzoSSN       string // min prezzo SSN dalla Lista Trasparenza, vuoto se non disponibile
 }
 
 // FormaGroup groups packages that share the same pharmaceutical form.
@@ -86,15 +87,17 @@ type FormaGroup struct {
 
 // DrugDetail holds all packages and their active ingredients for one drug.
 type DrugDetail struct {
-	CodFarmaco     string          `json:"codFarmaco"`
-	Denominazione  string          `json:"denominazione"`
-	RagioneSociale string          `json:"ragioneSociale"`
-	CodiceATC      string          `json:"codiceATC"`
-	ATCDesc        string          `json:"atcDesc"`
-	PaAssociati    string          `json:"paAssociati"`
+	CodFarmaco     string             `json:"codFarmaco"`
+	Denominazione  string             `json:"denominazione"`
+	RagioneSociale string             `json:"ragioneSociale"`
+	CodiceATC      string             `json:"codiceATC"`
+	ATCDesc        string             `json:"atcDesc"`
+	PaAssociati    string             `json:"paAssociati"`
 	Confezioni     []ConfezioneDetail `json:"confezioni"`
 	FormaGroups    []FormaGroup       `json:"formaGroups"`
 	Shortages      []Shortage         `json:"shortages,omitempty"`
+	Prezzi         []PrezzoEquivalente `json:"prezzi,omitempty"`
+	Orfano         *FarmacoOrfano      `json:"orfano,omitempty"`
 }
 
 // ConfezioneDetail pairs a package with its active ingredients.
@@ -105,19 +108,48 @@ type ConfezioneDetail struct {
 
 // Shortage represents one entry in the AIFA shortage list (elenco_medicinali_carenti.csv).
 type Shortage struct {
-	NomeMedicinale    string `json:"nomeMedicinale"`
-	CodiceAIC         string `json:"codiceAIC"`
-	PrincipioAttivo   string `json:"principioAttivo"`
-	FormaDosaggio     string `json:"formaDosaggio"`
-	TitolareAIC       string `json:"titolareAIC"`
-	DataInizio        string `json:"dataInizio"`
-	FinePresunta      string `json:"finePresunta"`
-	Equivalente       string `json:"equivalente"`
-	Motivazioni       string `json:"motivazioni"`
-	SuggerimentiAIFA  string `json:"suggerimentiAIFA"`
-	NotaAIFA          string `json:"notaAIFA"`
-	Fascia            string `json:"fascia"`
-	CodiceATC         string `json:"codiceATC"`
+	NomeMedicinale   string `json:"nomeMedicinale"`
+	CodiceAIC        string `json:"codiceAIC"`
+	PrincipioAttivo  string `json:"principioAttivo"`
+	FormaDosaggio    string `json:"formaDosaggio"`
+	TitolareAIC      string `json:"titolareAIC"`
+	DataInizio       string `json:"dataInizio"`
+	FinePresunta     string `json:"finePresunta"`
+	Equivalente      string `json:"equivalente"`
+	Motivazioni      string `json:"motivazioni"`
+	SuggerimentiAIFA string `json:"suggerimentiAIFA"`
+	NotaAIFA         string `json:"notaAIFA"`
+	Fascia           string `json:"fascia"`
+	CodiceATC        string `json:"codiceATC"`
+}
+
+// PrezzoEquivalente represents one entry in the Lista Trasparenza AIFA (farmaci equivalenti).
+// Source: Lista_farmaci_equivalenti.csv — stable URL, updated monthly.
+type PrezzoEquivalente struct {
+	CodiceAIC       string `json:"codiceAIC"`
+	CodFarmaco      string `json:"codFarmaco"`
+	PrincipioAttivo string `json:"principioAttivo"`
+	ATC             string `json:"atc"`
+	NomeFarmaco     string `json:"nomeFarmaco"`
+	Confezione      string `json:"confezione"`
+	Ditta           string `json:"ditta"`
+	PrezzoSSN       string `json:"prezzoSSN"`
+	PrezzoPubblico  string `json:"prezzoPubblico"`
+	Differenza      string `json:"differenza"`
+	Nota            string `json:"nota"`
+	CodiceGruppo    string `json:"codiceGruppo"`
+}
+
+// FarmacoOrfano represents one entry in the Lista Medicinali Orfani AIFA.
+// Source: Lista-farmaci-orfani-2024.csv — stable URL.
+type FarmacoOrfano struct {
+	CodiceAIC6      string `json:"codiceAIC6"`
+	Descrizione     string `json:"descrizione"`
+	DataInizio      string `json:"dataInizio"`
+	ATC             string `json:"atc"`
+	PrincipioAttivo string `json:"principioAttivo"`
+	Classe          string `json:"classe"`
+	DataFine        string `json:"dataFine"`
 }
 
 // Stats holds database row counts for the stats command.
@@ -217,6 +249,37 @@ CREATE INDEX IF NOT EXISTS idx_shortages_aic
     ON shortages (codice_aic) WHERE codice_aic IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_shortages_nome
     ON shortages (upper(nome_medicinale));
+
+CREATE TABLE IF NOT EXISTS prezzi_equivalenti (
+    codice_aic       TEXT PRIMARY KEY,
+    principio_attivo TEXT,
+    atc              TEXT,
+    nome_farmaco     TEXT,
+    confezione       TEXT,
+    ditta            TEXT,
+    prezzo_ssn       TEXT,
+    prezzo_pubblico  TEXT,
+    differenza       TEXT,
+    nota             TEXT,
+    codice_gruppo    TEXT,
+    synced_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_prezzi_gruppo ON prezzi_equivalenti (codice_gruppo);
+CREATE INDEX IF NOT EXISTS idx_prezzi_atc    ON prezzi_equivalenti (atc);
+
+CREATE TABLE IF NOT EXISTS farmaci_orfani (
+    codice_aic_6     TEXT PRIMARY KEY,
+    descrizione      TEXT NOT NULL,
+    data_inizio      TEXT,
+    atc              TEXT,
+    principio_attivo TEXT,
+    classe           TEXT,
+    data_fine        TEXT,
+    synced_at        TIMESTAMPTZ DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_orfani_pa ON farmaci_orfani (upper(principio_attivo));
 `
 
 // Migrate creates or updates the database schema.
@@ -289,21 +352,23 @@ func (s *Store) TruncateTables(ctx context.Context) error {
 
 const searchSQL = `
 SELECT
-    cod_farmaco,
-    max(denominazione)        AS denominazione,
-    max(ragione_sociale)      AS ragione_sociale,
-    max(stato_amministrativo) AS stato_amministrativo,
-    array_agg(DISTINCT forma ORDER BY forma) FILTER (WHERE forma <> '') AS forme,
-    max(codice_atc)           AS codice_atc,
-    max(pa_associati)         AS pa_associati,
-    count(*)                  AS num_confezioni
-FROM confezioni
+    c.cod_farmaco,
+    max(c.denominazione)          AS denominazione,
+    max(c.ragione_sociale)        AS ragione_sociale,
+    max(c.stato_amministrativo)   AS stato_amministrativo,
+    array_agg(DISTINCT c.forma ORDER BY c.forma) FILTER (WHERE c.forma <> '') AS forme,
+    max(c.codice_atc)             AS codice_atc,
+    max(c.pa_associati)           AS pa_associati,
+    count(*)                      AS num_confezioni,
+    coalesce(min(pe.prezzo_ssn), '') AS prezzo_ssn
+FROM confezioni c
+LEFT JOIN prezzi_equivalenti pe ON pe.codice_aic = c.codice_aic
 WHERE
-    search_vector @@ plainto_tsquery('simple', $1)
-    OR upper(codice_aic)  = upper($1)
-    OR upper(codice_atc)  = upper($1)
-GROUP BY cod_farmaco
-ORDER BY max(denominazione)
+    c.search_vector @@ plainto_tsquery('simple', $1)
+    OR upper(c.codice_aic)  = upper($1)
+    OR upper(c.codice_atc)  = upper($1)
+GROUP BY c.cod_farmaco
+ORDER BY max(c.denominazione)
 LIMIT $2 OFFSET $3
 `
 
@@ -314,6 +379,45 @@ WHERE
     search_vector @@ plainto_tsquery('simple', $1)
     OR upper(codice_aic)  = upper($1)
     OR upper(codice_atc)  = upper($1)
+`
+
+// filteredSearchSQL supports optional free-text ($1), PA ($2) and azienda ($3) filters.
+// Empty string for a param disables that filter.
+const filteredSearchSQL = `
+SELECT
+    c.cod_farmaco,
+    max(c.denominazione)          AS denominazione,
+    max(c.ragione_sociale)        AS ragione_sociale,
+    max(c.stato_amministrativo)   AS stato_amministrativo,
+    array_agg(DISTINCT c.forma ORDER BY c.forma) FILTER (WHERE c.forma <> '') AS forme,
+    max(c.codice_atc)             AS codice_atc,
+    max(c.pa_associati)           AS pa_associati,
+    count(*)                      AS num_confezioni,
+    coalesce(min(pe.prezzo_ssn), '') AS prezzo_ssn
+FROM confezioni c
+LEFT JOIN prezzi_equivalenti pe ON pe.codice_aic = c.codice_aic
+WHERE
+    ($1 = ''
+        OR c.search_vector @@ plainto_tsquery('simple', $1)
+        OR upper(c.codice_aic) = upper($1)
+        OR upper(c.codice_atc) = upper($1))
+    AND ($2 = '' OR upper(c.pa_associati) LIKE $2)
+    AND ($3 = '' OR upper(c.ragione_sociale) LIKE $3)
+GROUP BY c.cod_farmaco
+ORDER BY max(c.denominazione)
+LIMIT $4 OFFSET $5
+`
+
+const filteredCountSQL = `
+SELECT COUNT(DISTINCT c.cod_farmaco)
+FROM confezioni c
+WHERE
+    ($1 = ''
+        OR c.search_vector @@ plainto_tsquery('simple', $1)
+        OR upper(c.codice_aic) = upper($1)
+        OR upper(c.codice_atc) = upper($1))
+    AND ($2 = '' OR upper(c.pa_associati) LIKE $2)
+    AND ($3 = '' OR upper(c.ragione_sociale) LIKE $3)
 `
 
 // SearchFarmaci returns paginated drug search results and total hit count.
@@ -339,9 +443,110 @@ func (s *Store) SearchFarmaci(ctx context.Context, query string, page, pageSize 
 		var r SearchResult
 		if err := rows.Scan(
 			&r.CodFarmaco, &r.Denominazione, &r.RagioneSociale, &r.StatoAmm,
-			&r.Forme, &r.CodiceATC, &r.PaAssociati, &r.NumConfezioni,
+			&r.Forme, &r.CodiceATC, &r.PaAssociati, &r.NumConfezioni, &r.PrezzoSSN,
 		); err != nil {
 			return nil, 0, fmt.Errorf("scan risultato: %w", err)
+		}
+		results = append(results, r)
+	}
+	return results, total, rows.Err()
+}
+
+// SearchParams holds the optional filter criteria for the advanced search.
+type SearchParams struct {
+	Query   string // free-text (denomination, AIC, ATC)
+	PA      string // principio attivo substring
+	Azienda string // ragione sociale substring
+}
+
+// SearchFarmaciFiltered returns paginated results for any combination of free-text + PA + azienda filters.
+func (s *Store) SearchFarmaciFiltered(ctx context.Context, p SearchParams, page, pageSize int) ([]SearchResult, int64, error) {
+	q := strings.TrimSpace(p.Query)
+	paPattern := ""
+	if p.PA != "" {
+		paPattern = "%" + strings.ToUpper(strings.TrimSpace(p.PA)) + "%"
+	}
+	azPattern := ""
+	if p.Azienda != "" {
+		azPattern = "%" + strings.ToUpper(strings.TrimSpace(p.Azienda)) + "%"
+	}
+	if q == "" && paPattern == "" && azPattern == "" {
+		return nil, 0, nil
+	}
+
+	var total int64
+	if err := s.pool.QueryRow(ctx, filteredCountSQL, q, paPattern, azPattern).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("conteggio filtrato: %w", err)
+	}
+
+	rows, err := s.pool.Query(ctx, filteredSearchSQL, q, paPattern, azPattern, pageSize, page*pageSize)
+	if err != nil {
+		return nil, 0, fmt.Errorf("ricerca filtrata: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(
+			&r.CodFarmaco, &r.Denominazione, &r.RagioneSociale, &r.StatoAmm,
+			&r.Forme, &r.CodiceATC, &r.PaAssociati, &r.NumConfezioni, &r.PrezzoSSN,
+		); err != nil {
+			return nil, 0, fmt.Errorf("scan filtrato: %w", err)
+		}
+		results = append(results, r)
+	}
+	return results, total, rows.Err()
+}
+
+// SearchByCompany returns paginated drugs whose ragione_sociale contains the given substring (case-insensitive).
+func (s *Store) SearchByCompany(ctx context.Context, nome string, page, pageSize int) ([]SearchResult, int64, error) {
+	nome = strings.TrimSpace(nome)
+	if nome == "" {
+		return nil, 0, nil
+	}
+	pattern := "%" + strings.ToUpper(nome) + "%"
+
+	var total int64
+	if err := s.pool.QueryRow(ctx,
+		`SELECT COUNT(DISTINCT cod_farmaco) FROM confezioni WHERE upper(ragione_sociale) LIKE $1`,
+		pattern,
+	).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count by company: %w", err)
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+		    c.cod_farmaco,
+		    max(c.denominazione)          AS denominazione,
+		    max(c.ragione_sociale)        AS ragione_sociale,
+		    max(c.stato_amministrativo)   AS stato_amministrativo,
+		    array_agg(DISTINCT c.forma ORDER BY c.forma) FILTER (WHERE c.forma <> '') AS forme,
+		    max(c.codice_atc)             AS codice_atc,
+		    max(c.pa_associati)           AS pa_associati,
+		    count(*)                      AS num_confezioni,
+		    coalesce(min(pe.prezzo_ssn), '') AS prezzo_ssn
+		FROM confezioni c
+		LEFT JOIN prezzi_equivalenti pe ON pe.codice_aic = c.codice_aic
+		WHERE upper(c.ragione_sociale) LIKE $1
+		GROUP BY c.cod_farmaco
+		ORDER BY max(c.denominazione)
+		LIMIT $2 OFFSET $3`,
+		pattern, pageSize, page*pageSize,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("search by company: %w", err)
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(
+			&r.CodFarmaco, &r.Denominazione, &r.RagioneSociale, &r.StatoAmm,
+			&r.Forme, &r.CodiceATC, &r.PaAssociati, &r.NumConfezioni, &r.PrezzoSSN,
+		); err != nil {
+			return nil, 0, err
 		}
 		results = append(results, r)
 	}
@@ -482,6 +687,18 @@ func (s *Store) GetDrugDetail(ctx context.Context, codFarmaco string) (*DrugDeta
 	}
 	if shortages, err := s.GetShortagesByAIC(ctx, aics); err == nil {
 		detail.Shortages = shortages
+	}
+
+	// Load pricing info from Lista Trasparenza
+	if prezzi, err := s.GetPrezziByAIC(ctx, aics); err == nil {
+		detail.Prezzi = prezzi
+	}
+
+	// Load orphan drug info (matched on 6-digit AIC prefix)
+	if len(detail.Confezioni) > 0 {
+		if orfano, err := s.GetOrfanoByAIC(ctx, detail.Confezioni[0].CodiceAIC); err == nil {
+			detail.Orfano = orfano
+		}
 	}
 
 	return detail, nil
@@ -680,18 +897,20 @@ func (s *Store) ListByATC(ctx context.Context, code string, page, pageSize int) 
 	}
 	rows, err := s.pool.Query(ctx, `
 		SELECT
-		    cod_farmaco,
-		    max(denominazione)        AS denominazione,
-		    max(ragione_sociale)      AS ragione_sociale,
-		    max(stato_amministrativo) AS stato_amministrativo,
-		    array_agg(DISTINCT forma ORDER BY forma) FILTER (WHERE forma <> '') AS forme,
-		    max(codice_atc)           AS codice_atc,
-		    max(pa_associati)         AS pa_associati,
-		    count(*)                  AS num_confezioni
-		FROM confezioni
-		WHERE upper(codice_atc) = upper($1)
-		GROUP BY cod_farmaco
-		ORDER BY max(denominazione)
+		    c.cod_farmaco,
+		    max(c.denominazione)          AS denominazione,
+		    max(c.ragione_sociale)        AS ragione_sociale,
+		    max(c.stato_amministrativo)   AS stato_amministrativo,
+		    array_agg(DISTINCT c.forma ORDER BY c.forma) FILTER (WHERE c.forma <> '') AS forme,
+		    max(c.codice_atc)             AS codice_atc,
+		    max(c.pa_associati)           AS pa_associati,
+		    count(*)                      AS num_confezioni,
+		    coalesce(min(pe.prezzo_ssn), '') AS prezzo_ssn
+		FROM confezioni c
+		LEFT JOIN prezzi_equivalenti pe ON pe.codice_aic = c.codice_aic
+		WHERE upper(c.codice_atc) = upper($1)
+		GROUP BY c.cod_farmaco
+		ORDER BY max(c.denominazione)
 		LIMIT $2 OFFSET $3`,
 		code, pageSize, page*pageSize,
 	)
@@ -704,7 +923,7 @@ func (s *Store) ListByATC(ctx context.Context, code string, page, pageSize int) 
 		var r SearchResult
 		if err := rows.Scan(
 			&r.CodFarmaco, &r.Denominazione, &r.RagioneSociale, &r.StatoAmm,
-			&r.Forme, &r.CodiceATC, &r.PaAssociati, &r.NumConfezioni,
+			&r.Forme, &r.CodiceATC, &r.PaAssociati, &r.NumConfezioni, &r.PrezzoSSN,
 		); err != nil {
 			return nil, 0, err
 		}
@@ -727,4 +946,308 @@ func (s *Store) GetATCCode(ctx context.Context, code string) (*ATCCode, error) {
 		return nil, fmt.Errorf("get ATC code: %w", err)
 	}
 	return &a, nil
+}
+
+// ─── Lista Trasparenza (prezzi equivalenti) ───────────────────────────────────
+
+// TruncatePrezziEquivalenti removes all rows from the prezzi_equivalenti table.
+func (s *Store) TruncatePrezziEquivalenti(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, "TRUNCATE prezzi_equivalenti")
+	return err
+}
+
+var prezziCols = []string{
+	"codice_aic", "principio_attivo", "atc", "nome_farmaco", "confezione",
+	"ditta", "prezzo_ssn", "prezzo_pubblico", "differenza", "nota", "codice_gruppo",
+}
+
+// BulkInsertPrezziEquivalenti writes a batch of pricing rows using COPY ON CONFLICT DO NOTHING.
+func (s *Store) BulkInsertPrezziEquivalenti(ctx context.Context, rows []PrezzoEquivalente) (int64, error) {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	data := make([][]any, len(rows))
+	for i, r := range rows {
+		data[i] = []any{
+			r.CodiceAIC, r.PrincipioAttivo, r.ATC, r.NomeFarmaco, r.Confezione,
+			r.Ditta, r.PrezzoSSN, r.PrezzoPubblico, r.Differenza, r.Nota, r.CodiceGruppo,
+		}
+	}
+	return s.pool.CopyFrom(ctx, pgx.Identifier{"prezzi_equivalenti"}, prezziCols, pgx.CopyFromRows(data))
+}
+
+// GetPrezziByAIC returns pricing entries for a list of AIC codes.
+func (s *Store) GetPrezziByAIC(ctx context.Context, aics []string) ([]PrezzoEquivalente, error) {
+	if len(aics) == 0 {
+		return nil, nil
+	}
+	rows, err := s.pool.Query(ctx,
+		`SELECT pe.codice_aic, coalesce(c.cod_farmaco,''),
+		        coalesce(pe.principio_attivo,''), coalesce(pe.atc,''),
+		        coalesce(pe.nome_farmaco,''), coalesce(pe.confezione,''), coalesce(pe.ditta,''),
+		        coalesce(pe.prezzo_ssn,''), coalesce(pe.prezzo_pubblico,''),
+		        coalesce(pe.differenza,''), coalesce(pe.nota,''), coalesce(pe.codice_gruppo,'')
+		 FROM prezzi_equivalenti pe
+		 LEFT JOIN confezioni c ON c.codice_aic = pe.codice_aic
+		 WHERE pe.codice_aic = ANY($1)
+		 ORDER BY pe.nome_farmaco`,
+		aics,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("prezzi by AIC: %w", err)
+	}
+	defer rows.Close()
+	return scanPrezzi(rows)
+}
+
+// GetEquivalentiByGruppo returns all drugs in the same therapeutic equivalence group.
+func (s *Store) GetEquivalentiByGruppo(ctx context.Context, codiceGruppo string) ([]PrezzoEquivalente, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT pe.codice_aic, coalesce(c.cod_farmaco,''),
+		        coalesce(pe.principio_attivo,''), coalesce(pe.atc,''),
+		        coalesce(pe.nome_farmaco,''), coalesce(pe.confezione,''), coalesce(pe.ditta,''),
+		        coalesce(pe.prezzo_ssn,''), coalesce(pe.prezzo_pubblico,''),
+		        coalesce(pe.differenza,''), coalesce(pe.nota,''), coalesce(pe.codice_gruppo,'')
+		 FROM prezzi_equivalenti pe
+		 LEFT JOIN confezioni c ON c.codice_aic = pe.codice_aic
+		 WHERE pe.codice_gruppo = $1
+		 ORDER BY pe.prezzo_ssn, pe.nome_farmaco`,
+		codiceGruppo,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("equivalenti by gruppo: %w", err)
+	}
+	defer rows.Close()
+	return scanPrezzi(rows)
+}
+
+func scanPrezzi(rows pgx.Rows) ([]PrezzoEquivalente, error) {
+	var out []PrezzoEquivalente
+	for rows.Next() {
+		var p PrezzoEquivalente
+		if err := rows.Scan(
+			&p.CodiceAIC, &p.CodFarmaco, &p.PrincipioAttivo, &p.ATC, &p.NomeFarmaco, &p.Confezione,
+			&p.Ditta, &p.PrezzoSSN, &p.PrezzoPubblico, &p.Differenza, &p.Nota, &p.CodiceGruppo,
+		); err != nil {
+			return nil, err
+		}
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
+// ─── Farmaci orfani ───────────────────────────────────────────────────────────
+
+// TruncateFarmaciOrfani removes all rows from the farmaci_orfani table.
+func (s *Store) TruncateFarmaciOrfani(ctx context.Context) error {
+	_, err := s.pool.Exec(ctx, "TRUNCATE farmaci_orfani")
+	return err
+}
+
+var orfaniCols = []string{
+	"codice_aic_6", "descrizione", "data_inizio", "atc", "principio_attivo", "classe", "data_fine",
+}
+
+// BulkInsertFarmaciOrfani writes a batch of orphan drug rows.
+func (s *Store) BulkInsertFarmaciOrfani(ctx context.Context, rows []FarmacoOrfano) (int64, error) {
+	if len(rows) == 0 {
+		return 0, nil
+	}
+	data := make([][]any, len(rows))
+	for i, r := range rows {
+		data[i] = []any{
+			r.CodiceAIC6, r.Descrizione, r.DataInizio, r.ATC, r.PrincipioAttivo, r.Classe, r.DataFine,
+		}
+	}
+	return s.pool.CopyFrom(ctx, pgx.Identifier{"farmaci_orfani"}, orfaniCols, pgx.CopyFromRows(data))
+}
+
+// GetOrfanoByAIC looks up whether a drug (identified by its full 9-digit AIC) is an orphan drug.
+// Matches on the first 6 digits of the AIC (normalised). Returns nil when not found.
+func (s *Store) GetOrfanoByAIC(ctx context.Context, aic string) (*FarmacoOrfano, error) {
+	if len(aic) < 6 {
+		return nil, nil
+	}
+	aic6 := fmt.Sprintf("%06s", aic[:6])
+	var f FarmacoOrfano
+	err := s.pool.QueryRow(ctx,
+		`SELECT codice_aic_6, descrizione, coalesce(data_inizio,''), coalesce(atc,''),
+		        coalesce(principio_attivo,''), coalesce(classe,''), coalesce(data_fine,'')
+		 FROM farmaci_orfani WHERE codice_aic_6 = $1`,
+		aic6,
+	).Scan(&f.CodiceAIC6, &f.Descrizione, &f.DataInizio, &f.ATC, &f.PrincipioAttivo, &f.Classe, &f.DataFine)
+	if err == pgx.ErrNoRows {
+		return nil, nil
+	}
+	if err != nil {
+		return nil, fmt.Errorf("farmaco orfano: %w", err)
+	}
+	return &f, nil
+}
+
+// ─── Active ingredient search ─────────────────────────────────────────────────
+
+// SearchByPA returns paginated drugs that contain the given active ingredient.
+func (s *Store) SearchByPA(ctx context.Context, nome string, page, pageSize int) ([]SearchResult, int64, error) {
+	nome = strings.TrimSpace(nome)
+	if nome == "" {
+		return nil, 0, nil
+	}
+	pattern := strings.ToUpper(nome) + "%"
+
+	var total int64
+	if err := s.pool.QueryRow(ctx,
+		`SELECT COUNT(DISTINCT c.cod_farmaco)
+		 FROM confezioni c
+		 JOIN principi_attivi pa ON pa.codice_aic = c.codice_aic
+		 WHERE upper(pa.principio_attivo) LIKE $1`,
+		pattern,
+	).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("count by PA: %w", err)
+	}
+
+	rows, err := s.pool.Query(ctx, `
+		SELECT
+		    c.cod_farmaco,
+		    max(c.denominazione)        AS denominazione,
+		    max(c.ragione_sociale)      AS ragione_sociale,
+		    max(c.stato_amministrativo) AS stato_amministrativo,
+		    array_agg(DISTINCT c.forma ORDER BY c.forma) FILTER (WHERE c.forma <> '') AS forme,
+		    max(c.codice_atc)           AS codice_atc,
+		    max(c.pa_associati)         AS pa_associati,
+		    count(DISTINCT c.codice_aic)     AS num_confezioni,
+		    coalesce(min(pe.prezzo_ssn), '') AS prezzo_ssn
+		FROM confezioni c
+		JOIN principi_attivi pa ON pa.codice_aic = c.codice_aic
+		LEFT JOIN prezzi_equivalenti pe ON pe.codice_aic = c.codice_aic
+		WHERE upper(pa.principio_attivo) LIKE $1
+		GROUP BY c.cod_farmaco
+		ORDER BY max(c.denominazione)
+		LIMIT $2 OFFSET $3`,
+		pattern, pageSize, page*pageSize,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("search by PA: %w", err)
+	}
+	defer rows.Close()
+	var results []SearchResult
+	for rows.Next() {
+		var r SearchResult
+		if err := rows.Scan(
+			&r.CodFarmaco, &r.Denominazione, &r.RagioneSociale, &r.StatoAmm,
+			&r.Forme, &r.CodiceATC, &r.PaAssociati, &r.NumConfezioni, &r.PrezzoSSN,
+		); err != nil {
+			return nil, 0, err
+		}
+		results = append(results, r)
+	}
+	return results, total, rows.Err()
+}
+
+// ListDrugs returns all drugs ordered A-Z, with optional text filter (q) and first-letter filter (letter).
+// When both q and letter are empty it returns the full catalogue paginated.
+func (s *Store) ListDrugs(ctx context.Context, q, letter string, page, pageSize int) ([]SearchResult, int64, error) {
+	q = strings.TrimSpace(q)
+	letter = strings.TrimSpace(letter)
+
+	var total int64
+	if err := s.pool.QueryRow(ctx, `
+		SELECT COUNT(DISTINCT c.cod_farmaco)
+		FROM confezioni c
+		WHERE ($1 = '' OR upper(c.denominazione) LIKE '%' || upper($1) || '%'
+		              OR upper(c.ragione_sociale) LIKE '%' || upper($1) || '%'
+		              OR upper(c.pa_associati)    LIKE '%' || upper($1) || '%')
+		  AND ($2 = '' OR upper(c.denominazione) LIKE upper($2) || '%')`,
+		q, letter,
+	).Scan(&total); err != nil {
+		return nil, 0, fmt.Errorf("list drugs count: %w", err)
+	}
+
+	drows, err := s.pool.Query(ctx, `
+		SELECT
+		    c.cod_farmaco,
+		    max(c.denominazione)          AS denominazione,
+		    max(c.ragione_sociale)        AS ragione_sociale,
+		    max(c.stato_amministrativo)   AS stato_amministrativo,
+		    array_agg(DISTINCT c.forma ORDER BY c.forma) FILTER (WHERE c.forma <> '') AS forme,
+		    max(c.codice_atc)             AS codice_atc,
+		    max(c.pa_associati)           AS pa_associati,
+		    count(DISTINCT c.codice_aic)  AS num_confezioni,
+		    coalesce(min(pe.prezzo_ssn), '') AS prezzo_ssn
+		FROM confezioni c
+		LEFT JOIN prezzi_equivalenti pe ON pe.codice_aic = c.codice_aic
+		WHERE ($1 = '' OR upper(c.denominazione) LIKE '%' || upper($1) || '%'
+		              OR upper(c.ragione_sociale) LIKE '%' || upper($1) || '%'
+		              OR upper(c.pa_associati)    LIKE '%' || upper($1) || '%')
+		  AND ($2 = '' OR upper(c.denominazione) LIKE upper($2) || '%')
+		GROUP BY c.cod_farmaco
+		ORDER BY max(c.denominazione)
+		LIMIT $3 OFFSET $4`,
+		q, letter, pageSize, page*pageSize,
+	)
+	if err != nil {
+		return nil, 0, fmt.Errorf("list drugs: %w", err)
+	}
+	defer drows.Close()
+
+	var dresults []SearchResult
+	for drows.Next() {
+		var r SearchResult
+		if err := drows.Scan(
+			&r.CodFarmaco, &r.Denominazione, &r.RagioneSociale, &r.StatoAmm,
+			&r.Forme, &r.CodiceATC, &r.PaAssociati, &r.NumConfezioni, &r.PrezzoSSN,
+		); err != nil {
+			return nil, 0, err
+		}
+		dresults = append(dresults, r)
+	}
+	return dresults, total, drows.Err()
+}
+
+// AutocompletePA returns up to limit distinct principio_attivo names matching prefix q.
+func (s *Store) AutocompletePA(ctx context.Context, q string, limit int) ([]string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT DISTINCT principio_attivo
+		 FROM principi_attivi
+		 WHERE upper(principio_attivo) LIKE upper($1)||'%'
+		 ORDER BY principio_attivo
+		 LIMIT $2`,
+		q, limit)
+	if err != nil {
+		return nil, fmt.Errorf("autocomplete pa: %w", err)
+	}
+	defer rows.Close()
+	var results []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		results = append(results, name)
+	}
+	return results, rows.Err()
+}
+
+// AutocompleteCompany returns up to limit distinct ragione_sociale names matching substring q.
+func (s *Store) AutocompleteCompany(ctx context.Context, q string, limit int) ([]string, error) {
+	rows, err := s.pool.Query(ctx,
+		`SELECT DISTINCT ragione_sociale
+		 FROM confezioni
+		 WHERE upper(ragione_sociale) LIKE '%'||upper($1)||'%'
+		 ORDER BY ragione_sociale
+		 LIMIT $2`,
+		q, limit)
+	if err != nil {
+		return nil, fmt.Errorf("autocomplete company: %w", err)
+	}
+	defer rows.Close()
+	var results []string
+	for rows.Next() {
+		var name string
+		if err := rows.Scan(&name); err != nil {
+			return nil, err
+		}
+		results = append(results, name)
+	}
+	return results, rows.Err()
 }

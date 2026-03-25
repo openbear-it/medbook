@@ -1,9 +1,12 @@
 // Package syncer downloads and imports AIFA drug registry CSV files into PostgreSQL.
 //
-// Data sources (updated daily by AIFA):
+// Data sources (updated daily/monthly by AIFA):
 //   - https://drive.aifa.gov.it/farmaci/confezioni_fornitura.csv  (~158 K packages)
 //   - https://drive.aifa.gov.it/farmaci/PA_confezioni.csv         (~336 K active ingredients)
 //   - https://drive.aifa.gov.it/farmaci/atc.csv                   (~7 K ATC codes)
+//   - https://www.aifa.gov.it/…/elenco_medicinali_carenti.csv     (shortages, daily)
+//   - https://www.aifa.gov.it/…/Lista_farmaci_equivalenti.csv     (prices+equivalents, monthly)
+//   - https://www.aifa.gov.it/…/Lista-farmaci-orfani-2024.csv     (orphan drugs, annual)
 package syncer
 
 import (
@@ -20,14 +23,19 @@ import (
 
 	"medbook/internal/db"
 )
-
 const (
 	urlConfezioni = "https://drive.aifa.gov.it/farmaci/confezioni_fornitura.csv"
 	urlPA         = "https://drive.aifa.gov.it/farmaci/PA_confezioni.csv"
 	urlATC        = "https://drive.aifa.gov.it/farmaci/atc.csv"
 
-	// AIFA shortage list (elenco_medicinali_carenti) — stable URL, updated daily.
+	// AIFA shortage list — stable URL, updated daily.
 	urlShortages = "https://www.aifa.gov.it/documents/20142/847339/elenco_medicinali_carenti.csv"
+
+	// Lista Trasparenza (prezzi + equivalenti) — stable document ID, updated monthly.
+	urlPrezziEquivalenti = "https://www.aifa.gov.it/documents/20142/825643/Lista_farmaci_equivalenti.csv"
+
+	// Lista Medicinali Orfani — stable document ID, updated annually.
+	urlFarmaciOrfani = "https://www.aifa.gov.it/documents/20142/842593/Lista-farmaci-orfani-2024.csv"
 
 	batchSize = 5000
 )
@@ -46,7 +54,7 @@ func New(store *db.Store) *Syncer {
 	}
 }
 
-// Run executes the full sync pipeline: truncate → import 3 CSV files + shortages.
+// Run executes the full sync pipeline: truncate → import 3 CSV files + auxiliary lists.
 func (s *Syncer) Run(ctx context.Context) error {
 	sep := strings.Repeat("─", 55)
 	fmt.Printf("\nMedBook Sync — Aggiornamento Banca Dati Farmaci AIFA\n%s\n", sep)
@@ -87,13 +95,30 @@ func (s *Syncer) Run(ctx context.Context) error {
 	s.store.FinishSyncLog(ctx, logID, confCnt, paCnt, atcCnt, "")
 	fmt.Printf("%s\n✓ Sincronizzazione completata\n\n", sep)
 
-	// ── 5. Carenze (non-fatal: shortage data is auxiliary) ─
+	// ── Auxiliary lists (non-fatal: errors are warnings, not failures) ─
+
 	fmt.Println("[5/5] Scaricando elenco_medicinali_carenti.csv ...")
 	shortCnt, err := s.syncShortages(ctx)
 	if err != nil {
 		fmt.Printf("      ⚠ carenze non sincronizzate: %v\n", err)
 	} else {
 		fmt.Printf("      ✓ %s farmaci carenti importati\n", fmtN(shortCnt))
+	}
+
+	fmt.Println("[6/6] Scaricando Lista_farmaci_equivalenti.csv ...")
+	prezziCnt, err := s.syncPrezziEquivalenti(ctx)
+	if err != nil {
+		fmt.Printf("      ⚠ lista trasparenza non sincronizzata: %v\n", err)
+	} else {
+		fmt.Printf("      ✓ %s prezzi equivalenti importati\n", fmtN(prezziCnt))
+	}
+
+	fmt.Println("[7/7] Scaricando Lista-farmaci-orfani.csv ...")
+	orfaniCnt, err := s.syncFarmaciOrfani(ctx)
+	if err != nil {
+		fmt.Printf("      ⚠ farmaci orfani non sincronizzati: %v\n", err)
+	} else {
+		fmt.Printf("      ✓ %s farmaci orfani importati\n", fmtN(orfaniCnt))
 	}
 	fmt.Printf("%s\n✓ Sincronizzazione completata\n\n", sep)
 	return nil
@@ -108,6 +133,30 @@ func (s *Syncer) SyncShortages(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	fmt.Printf("✓ %s farmaci carenti importati\n", fmtN(n))
+	return n, nil
+}
+
+// SyncPrezziEquivalenti refreshes only the Lista Trasparenza pricing data.
+func (s *Syncer) SyncPrezziEquivalenti(ctx context.Context) (int64, error) {
+	fmt.Println("MedBook — Aggiornamento Lista Trasparenza (prezzi equivalenti)")
+	fmt.Println("Scaricando Lista_farmaci_equivalenti.csv ...")
+	n, err := s.syncPrezziEquivalenti(ctx)
+	if err != nil {
+		return 0, err
+	}
+	fmt.Printf("✓ %s prezzi importati\n", fmtN(n))
+	return n, nil
+}
+
+// SyncFarmaciOrfani refreshes only the orphan drugs list.
+func (s *Syncer) SyncFarmaciOrfani(ctx context.Context) (int64, error) {
+	fmt.Println("MedBook — Aggiornamento Lista Medicinali Orfani")
+	fmt.Println("Scaricando Lista-farmaci-orfani.csv ...")
+	n, err := s.syncFarmaciOrfani(ctx)
+	if err != nil {
+		return 0, err
+	}
+	fmt.Printf("✓ %s farmaci orfani importati\n", fmtN(n))
 	return n, nil
 }
 
@@ -231,6 +280,90 @@ func (s *Syncer) syncShortages(ctx context.Context) (int64, error) {
 			rows[i] = v.(db.Shortage)
 		}
 		return s.store.BulkInsertShortages(ctx, rows)
+	})
+}
+
+func (s *Syncer) syncPrezziEquivalenti(ctx context.Context) (int64, error) {
+	if err := s.store.TruncatePrezziEquivalenti(ctx); err != nil {
+		return 0, fmt.Errorf("truncate prezzi: %w", err)
+	}
+	// Lista Trasparenza CSV: semicolon-delimited, ISO-8859-1, 1 header row.
+	// Columns: PA, Confezione rif., ATC, AIC, Farmaco, Confezione, Ditta,
+	//          Prezzo SSN, Prezzo Pubblico (+ date in header), Differenza, Nota, Codice gruppo
+	seen := make(map[string]struct{}, 30000)
+	return s.streamCSVSkip(ctx, urlPrezziEquivalenti, 0, true, func(r []string) (any, error) {
+		if len(r) < 12 {
+			return nil, nil
+		}
+		aic := fmt.Sprintf("%09s", clean(r[3]))
+		if aic == "         " || aic == "" {
+			return nil, nil
+		}
+		if _, dup := seen[aic]; dup {
+			return nil, nil
+		}
+		seen[aic] = struct{}{}
+		return db.PrezzoEquivalente{
+			CodiceAIC:       aic,
+			PrincipioAttivo: clean(r[0]),
+			ATC:             clean(r[2]),
+			NomeFarmaco:     clean(r[4]),
+			Confezione:      clean(r[5]),
+			Ditta:           clean(r[6]),
+			PrezzoSSN:       clean(r[7]),
+			PrezzoPubblico:  clean(r[8]),
+			Differenza:      clean(r[9]),
+			Nota:            clean(r[10]),
+			CodiceGruppo:    clean(r[11]),
+		}, nil
+	}, func(ctx context.Context, batch []any) (int64, error) {
+		rows := make([]db.PrezzoEquivalente, len(batch))
+		for i, v := range batch {
+			rows[i] = v.(db.PrezzoEquivalente)
+		}
+		return s.store.BulkInsertPrezziEquivalenti(ctx, rows)
+	})
+}
+
+func (s *Syncer) syncFarmaciOrfani(ctx context.Context) (int64, error) {
+	if err := s.store.TruncateFarmaciOrfani(ctx); err != nil {
+		return 0, fmt.Errorf("truncate orfani: %w", err)
+	}
+	// Orfani CSV: semicolon-delimited, ISO-8859-1, 1 header row.
+	// Columns: Descrizione farmaco, Data inizio reg, AIC 6 digit, ATC, PA, Classe, Data fine
+	seen := make(map[string]struct{}, 1000)
+	return s.streamCSVSkip(ctx, urlFarmaciOrfani, 0, true, func(r []string) (any, error) {
+		if len(r) < 6 {
+			return nil, nil
+		}
+		desc := clean(r[0])
+		if desc == "" {
+			return nil, nil
+		}
+		aic6 := fmt.Sprintf("%06s", clean(r[2]))
+		if _, dup := seen[aic6]; dup {
+			return nil, nil
+		}
+		seen[aic6] = struct{}{}
+		dataFine := ""
+		if len(r) >= 7 {
+			dataFine = clean(r[6])
+		}
+		return db.FarmacoOrfano{
+			CodiceAIC6:      aic6,
+			Descrizione:     desc,
+			DataInizio:      clean(r[1]),
+			ATC:             clean(r[3]),
+			PrincipioAttivo: clean(r[4]),
+			Classe:          clean(r[5]),
+			DataFine:        dataFine,
+		}, nil
+	}, func(ctx context.Context, batch []any) (int64, error) {
+		rows := make([]db.FarmacoOrfano, len(batch))
+		for i, v := range batch {
+			rows[i] = v.(db.FarmacoOrfano)
+		}
+		return s.store.BulkInsertFarmaciOrfani(ctx, rows)
 	})
 }
 

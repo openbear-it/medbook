@@ -98,6 +98,34 @@ main { max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 footer { text-align: center; font-size: .78rem; color: var(--muted); padding: 2rem 0 1rem; }
 footer a { color: var(--gray); }
 
+/* ── Advanced search ── */
+.adv-toggle { margin-top: .4rem; text-align: right; }
+.adv-toggle a { font-size: .82rem; color: var(--muted); text-decoration: none; }
+.adv-toggle a:hover, .adv-toggle a.adv-active { color: var(--blue); font-weight: 600; }
+.adv-panel {
+  display: none; background: #f9fafb; border: 1.5px solid var(--border);
+  border-radius: 8px; padding: .9rem 1.1rem; margin-top: .5rem;
+}
+.adv-row { display: grid; grid-template-columns: 1fr 1fr; gap: .8rem; }
+@media (max-width: 580px) { .adv-row { grid-template-columns: 1fr; } }
+.adv-field label {
+  display: block; font-size: .75rem; font-weight: 700; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .4px; margin-bottom: .25rem;
+}
+.adv-field input {
+  width: 100%; padding: .5rem .8rem; border: 1.5px solid var(--border);
+  border-radius: 6px; font-size: .9rem; outline: none; background: var(--card);
+  transition: border-color .15s;
+}
+.adv-field input:focus { border-color: var(--blue); }
+.filter-chip {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .15rem .5rem; border-radius: 12px;
+  background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; font-size: .76rem;
+}
+.filter-chip a { color: var(--muted); text-decoration: none; margin-left: .15rem; }
+.filter-chip a:hover { color: var(--red); }
+
 /* ── Nav bar ── */
 nav.topnav {
   background: var(--blue-dk); display: flex; align-items: center;
@@ -142,45 +170,71 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
   </div>
 </header>
 <nav class="topnav">
-  <a href="/medbook" class="active">🔍 Ricerca</a>
-  <a href="/api/docs">📖 API Docs</a>
+  <a href="/search" class="active">🔍 Ricerca</a>
+  <a href="/drugs">📋 Catalogo A–Z</a>
+  <a href="/drugs/ingredient">🧪 Per P.A.</a>
+  <a href="/drugs/company">🏭 Per Azienda</a>
+  <a href="/api/docs">📖 API</a>
 </nav>
 
 <main>
   <!-- Search form -->
-  <form method="GET" action="/medbook" class="search-wrap" style="margin-top:1.5rem" id="search-form">
-    <div class="ac-wrap">
-      <input type="text" name="q" id="q-input" value="{{.Query}}"
-             placeholder="Cerca farmaco, principio attivo, codice AIC o ATC..."
-             autofocus autocomplete="off" spellcheck="false">
-      <div id="ac-dropdown"></div>
+  <form method="GET" action="/search" id="search-form" style="margin-top:1.5rem">
+    <div class="search-wrap">
+      <div class="ac-wrap">
+        <input type="text" name="q" id="q-input" value="{{.Query}}"
+               placeholder="Cerca farmaco, principio attivo, codice AIC o ATC…"
+               autofocus autocomplete="off" spellcheck="false">
+        <div id="ac-dropdown"></div>
+      </div>
+      <button type="submit">Cerca</button>
     </div>
-    <button type="submit">Cerca</button>
+    <div class="adv-toggle">
+      <a href="#" id="adv-btn"{{if or .PA .Azienda}} class="adv-active"{{end}}>⚙ Filtri avanzati</a>
+    </div>
+    <div class="adv-panel" id="adv-panel"{{if or .PA .Azienda}} style="display:block"{{end}}>
+      <div class="adv-row">
+        <div class="adv-field">
+          <label for="pa-input">Principio attivo</label>
+          <input type="text" name="pa" id="pa-input" value="{{.PA}}"
+                 placeholder="es. Paracetamolo" autocomplete="off">
+        </div>
+        <div class="adv-field">
+          <label for="az-input">Azienda farmaceutica</label>
+          <input type="text" name="azienda" id="az-input" value="{{.Azienda}}"
+                 placeholder="es. Angelini" autocomplete="off">
+        </div>
+      </div>
+    </div>
   </form>
 
   {{if .Query}}
     {{if .Results}}
       <p class="results-hdr">
-        <strong>{{.Total}}</strong> farmaci trovati per "<strong>{{.Query}}</strong>"
-        {{if gt .Pages 1}}— pagina {{add .Page 1}} di {{.Pages}}{{end}}
+        <strong>{{.Total}}</strong> farmaci trovati
+        {{if .Query}} per "<strong>{{.Query}}</strong>"{{end}}
+        {{if .PA}}&nbsp;<span class="filter-chip">🧪 P.A.: {{.PA}} <a href="/search?q={{.Query}}&azienda={{.Azienda}}" title="Rimuovi">✕</a></span>{{end}}
+        {{if .Azienda}}&nbsp;<span class="filter-chip">🏭 Azienda: {{.Azienda}} <a href="/search?q={{.Query}}&pa={{.PA}}" title="Rimuovi">✕</a></span>{{end}}
+        {{if gt .Pages 1}}&nbsp;— pagina {{add .Page 1}} di {{.Pages}}{{end}}
       </p>
 
       {{range .Results}}
       <div class="drug-card">
-        <a href="/farmaco/{{.CodFarmaco}}?q={{$.Query}}">
+        <a href="/drug/{{.CodFarmaco}}?q={{$.Query}}">
           <div class="drug-name">{{.Denominazione}}</div>
-          <div class="drug-company">{{.RagioneSociale}}</div>
+          <a class="drug-company" href="/drugs/company?q={{.RagioneSociale}}" style="display:block;text-decoration:none;color:var(--muted);font-size:.85rem;margin-bottom:.5rem">{{.RagioneSociale}}</a>
           <div class="drug-meta">
             {{if .CodiceATC}}
               <span class="tag atc">ATC: {{.CodiceATC}}</span>
             {{end}}
             {{if .PaAssociati}}
-              <span class="tag">{{.PaAssociati}}</span>
+              <a class="tag" href="/drugs/ingredient?q={{.PaAssociati | firstPA}}">{{.PaAssociati}}</a>
             {{end}}
             {{range .Forme}}
               <span class="tag forme">{{.}}</span>
             {{end}}
             <span class="tag qty">{{.NumConfezioni}} confezioni</span>
+            {{if .PrezzoSSN}}<span class="tag" style="background:#f0fdf4;color:#166534;border-color:#86efac">💶 €&nbsp;{{.PrezzoSSN}} SSN</span>{{end}}
             <span class="badge {{badgeClass .StatoAmm}}">{{.StatoAmm}}</span>
           </div>
         </a>
@@ -191,7 +245,7 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
       {{if gt .Pages 1}}
       <nav class="pagination">
         {{if gt .Page 0}}
-          <a href="/medbook?q={{.Query}}&p={{sub .Page 1}}">← Prec</a>
+          <a href="/search?q={{.Query}}&pa={{.PA}}&azienda={{.Azienda}}&p={{sub .Page 1}}">← Prec</a>
         {{else}}
           <span class="disabled">← Prec</span>
         {{end}}
@@ -200,12 +254,12 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
           {{if eq . $.Page}}
             <span class="active">{{add . 1}}</span>
           {{else}}
-            <a href="/medbook?q={{$.Query}}&p={{.}}">{{add . 1}}</a>
+            <a href="/search?q={{$.Query}}&pa={{$.PA}}&azienda={{$.Azienda}}&p={{.}}">{{add . 1}}</a>
           {{end}}
         {{end}}
 
         {{if lt .Page (sub .Pages 1)}}
-          <a href="/medbook?q={{.Query}}&p={{add .Page 1}}">Succ →</a>
+          <a href="/search?q={{.Query}}&pa={{.PA}}&azienda={{.Azienda}}&p={{add .Page 1}}">Succ →</a>
         {{else}}
           <span class="disabled">Succ →</span>
         {{end}}
@@ -221,14 +275,14 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
 
   {{else}}
     <div class="hint">
-      <h2>Ricerca farmaci dalla Banca Dati AIFA</h2>
+      <h2>Ricerca nella Banca Dati AIFA</h2>
       <p>Puoi cercare per:</p>
       <ul>
         <li>Nome commerciale (es. <em>Tachipirina</em>)</li>
         <li>Principio attivo (es. <em>Paracetamolo</em>)</li>
         <li>Codice ATC (es. <em>N02BE01</em>)</li>
         <li>Codice AIC (es. <em>012745143</em>)</li>
-        <li>Azienda farmaceutica (es. <em>Angelini</em>)</li>
+        <li>Nome azienda (es. <em>Angelini</em>)</li>
       </ul>
     </div>
   {{end}}
@@ -324,6 +378,18 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
   document.addEventListener('click', function (e) {
     if (!dropdown.contains(e.target) && e.target !== input) hide();
   });
+
+  // ── Advanced search toggle ──
+  var advBtn   = document.getElementById('adv-btn');
+  var advPanel = document.getElementById('adv-panel');
+  if (advBtn && advPanel) {
+    advBtn.addEventListener('click', function (e) {
+      e.preventDefault();
+      var open = advPanel.style.display === 'block';
+      advPanel.style.display = open ? 'none' : 'block';
+      advBtn.classList.toggle('adv-active', !open);
+    });
+  }
 }());
 </script>
 

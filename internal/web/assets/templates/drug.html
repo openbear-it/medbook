@@ -116,6 +116,66 @@ main { max-width: 960px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
 .shortage-name { font-weight: 600; color: #9f1239; }
 .shortage-meta { color: #6b7280; margin-top: .1rem; }
 
+/* ── Prezzo / equivalenti card ── */
+.prezzo-card {
+  background: #f0fdf4; border: 1.5px solid #86efac; border-radius: 8px;
+  padding: .9rem 1.2rem; margin-bottom: 1.2rem;
+}
+.prezzo-card h3 { font-size: .9rem; font-weight: 700; color: #166534; margin-bottom: .8rem; }
+.prezzo-value { font-weight: 700; color: #166534; font-size: 1rem; }
+
+/* ── Equivalents table (shared with price table inside prezzo-card) ── */
+.equiv-table { width: 100%; border-collapse: collapse; font-size: .82rem; }
+.equiv-table th {
+  background: #f0fdf4; text-align: left; padding: .45rem .7rem;
+  font-size: .72rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .5px; color: var(--muted); border-bottom: 2px solid #86efac;
+  position: sticky; top: 0;
+}
+.equiv-table td { padding: .45rem .7rem; border-bottom: 1px solid #dcfce7; vertical-align: top; }
+.equiv-table tr:last-child td { border-bottom: none; }
+.equiv-table tr:hover td { background: #f7fef9; }
+.equiv-row-current td { background: #dcfce7 !important; font-weight: 600; }
+.equiv-row-current td:first-child::before { content: "★ "; color: #166534; }
+.equiv-price     { font-weight: 700; color: #166534; white-space: nowrap; }
+.equiv-price-pub { font-weight: 600; color: #1e40af; white-space: nowrap; }
+.equiv-td-muted  { color: var(--muted); }
+.equiv-td-small  { font-size: .76rem; }
+.group-badge {
+  display: inline-block; padding: .15rem .45rem; border-radius: 4px;
+  background: #dcfce7; color: #166534; font-size: .72rem; font-family: monospace;
+  border: 1px solid #86efac; font-weight: 700; text-decoration: none;
+}
+.group-badge:hover { background: #bbf7d0; }
+
+/* ── Orfano badge ── */
+.orfano-badge {
+  background: #fefce8; border: 1.5px solid #fde047; border-radius: 8px;
+  padding: .7rem 1.1rem; margin-bottom: 1.2rem; font-size: .83rem;
+}
+.orfano-badge strong { color: #713f12; }
+
+/* ── Drug image ── */
+.drug-img-box {
+  float: right; margin: 0 0 .6rem 1.2rem;
+  width: 110px; text-align: center; flex-shrink: 0;
+}
+.drug-img-box img {
+  width: 100px; height: 100px; object-fit: contain;
+  border-radius: 8px; border: 1px solid var(--border);
+  background: #f9fafb;
+}
+.drug-img-caption {
+  font-size: .68rem; color: var(--muted); margin-top: .3rem;
+  line-height: 1.2;
+}
+.drug-img-placeholder {
+  width: 100px; height: 100px; border-radius: 8px;
+  border: 1px dashed var(--border); background: #f9fafb;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 2.2rem;
+}
+
 /* ── Offline note ── */
 .offline-note {
   background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
@@ -147,21 +207,33 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
   </div>
 </header>
 <nav class="topnav">
-  <a href="/medbook">🔍 Ricerca</a>
-  <a href="/api/docs">📖 API Docs</a>
+  <a href="/search">🔍 Ricerca</a>
+  <a href="/drugs">📋 Catalogo A–Z</a>
+  <a href="/drugs/ingredient">🧪 Per P.A.</a>
+  <a href="/drugs/company">🏭 Per Azienda</a>
+  <a href="/api/docs">📖 API</a>
 </nav>
 
 <main>
   <!-- Breadcrumb -->
   <nav class="bc">
-    <a href="/medbook{{if .Query}}?q={{.Query}}{{end}}">← Torna ai risultati</a>
+    <a href="/search{{if .Query}}?q={{.Query}}{{end}}">← Torna ai risultati</a>
     &nbsp;/&nbsp; {{.Detail.Denominazione}}
   </nav>
 
   <!-- Drug header -->
   <div class="drug-header">
+    <!-- Image box (populated by JS via Wikipedia) -->
+    <div class="drug-img-box" id="drug-img-wrap">
+      <div class="drug-img-placeholder" id="drug-img-placeholder">💊</div>
+      <img id="drug-img" src="" alt="" style="display:none" loading="lazy">
+      <div class="drug-img-caption" id="drug-img-caption" style="display:none">
+        🔬 <span id="drug-img-label">Struttura molecolare</span> —
+        <a href="" id="drug-img-link" target="_blank" rel="noopener" style="color:var(--muted)">Wikipedia</a>
+      </div>
+    </div>
     <div class="drug-title">{{.Detail.Denominazione}}</div>
-    <div class="drug-company">{{.Detail.RagioneSociale}}</div>
+    <a class="drug-company" href="/drugs/company?q={{.Detail.RagioneSociale}}" style="display:block;text-decoration:none;color:var(--muted);margin-bottom:.8rem;font-size:.95rem">{{.Detail.RagioneSociale}}</a>
     <div class="meta-row">
       {{if .Detail.CodiceATC}}
         <span class="tag tag-blue">
@@ -170,9 +242,12 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
         </span>
       {{end}}
       {{if .Detail.PaAssociati}}
-        <span class="tag tag-green">{{.Detail.PaAssociati}}</span>
+        <a class="tag tag-green" href="/drugs/ingredient?q={{.Detail.PaAssociati | firstPA}}">{{.Detail.PaAssociati}}</a>
       {{end}}
       <span class="tag tag-purple">Cod. farmaco: {{.Detail.CodFarmaco}}</span>
+      {{if .Detail.Orfano}}
+        <span class="tag" style="background:#fefce8;color:#713f12;border-color:#fde047">🧬 Farmaco Orfano</span>
+      {{end}}
     </div>
   </div>
 
@@ -191,6 +266,51 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
       {{if .SuggerimentiAIFA}}<div class="shortage-meta" style="color:#166534">💡 {{.SuggerimentiAIFA}}</div>{{end}}
     </div>
     {{end}}
+  </div>
+  {{end}}
+
+  <!-- Lista Trasparenza — prezzi SSN + equivalenti -->
+  {{if .Detail.Prezzi}}
+  <div class="prezzo-card">
+    <h3>💶 Rimborsabilità SSN — Lista Trasparenza AIFA</h3>
+
+    <!-- Compact price table for this drug's confezioni -->
+    <div style="overflow-x:auto;margin-bottom:.2rem">
+      <table class="equiv-table">
+        <thead>
+          <tr>
+            <th>Confezione</th>
+            <th>Prezzo SSN</th>
+            <th>Prezzo Pubblico</th>
+            <th>Nota</th>
+            <th>Gruppo</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Detail.Prezzi}}
+          <tr>
+            <td style="max-width:280px">{{.Confezione}}</td>
+            <td class="equiv-price">{{if .PrezzoSSN}}€ {{.PrezzoSSN}}{{else}}—{{end}}</td>
+            <td class="equiv-price-pub">{{if .PrezzoPubblico}}€ {{.PrezzoPubblico}}{{else}}—{{end}}</td>
+            <td class="equiv-td-small equiv-td-muted">{{.Nota}}</td>
+            <td>{{if .CodiceGruppo}}<a class="group-badge" href="/equivalents/{{.CodiceGruppo}}">{{.CodiceGruppo}} →</a>{{else}}—{{end}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+
+  </div>
+  {{end}}
+
+  <!-- Farmaco orfano notice -->
+  {{if .Detail.Orfano}}
+  <div class="orfano-badge">
+    🧬 <strong>Farmaco Orfano</strong> — {{.Detail.Orfano.Descrizione}}
+    {{if .Detail.Orfano.PrincipioAttivo}} &nbsp;·&nbsp; PA: {{.Detail.Orfano.PrincipioAttivo}}{{end}}
+    {{if .Detail.Orfano.Classe}} &nbsp;·&nbsp; Classe: {{.Detail.Orfano.Classe}}{{end}}
+    {{if .Detail.Orfano.DataInizio}} &nbsp;·&nbsp; Da: {{.Detail.Orfano.DataInizio}}{{end}}
+    {{if .Detail.Orfano.DataFine}} &nbsp;·&nbsp; Fino al: {{.Detail.Orfano.DataFine}}{{end}}
   </div>
   {{end}}
 
@@ -268,6 +388,59 @@ nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); col
   Dati: <a href="https://www.aifa.gov.it" target="_blank">AIFA — Agenzia Italiana del Farmaco</a>
   (licenza CC-BY 4.0) &nbsp;|&nbsp; MedBook — consultazione offline
 </footer>
+
+<script>
+(function () {
+  // Lazy-load a drug image from Wikipedia (IT then EN), fallback to active ingredient.
+  // Fully non-blocking: placeholder stays if offline or not found.
+  var img        = document.getElementById('drug-img');
+  var placeholder= document.getElementById('drug-img-placeholder');
+  var caption    = document.getElementById('drug-img-caption');
+  var link       = document.getElementById('drug-img-link');
+
+  function showImage(src, pageUrl, title) {
+    img.src = src;
+    img.alt = title;
+    img.style.display = 'block';
+    placeholder.style.display = 'none';
+    link.href = pageUrl;
+    document.getElementById('drug-img-label').textContent = title;
+    caption.style.display = 'block';
+  }
+
+  function tryWikipedia(title, lang, fallback) {
+    if (!title) { if (fallback) fallback(); return; }
+    var enc = encodeURIComponent(title.trim());
+    var api = 'https://' + lang + '.wikipedia.org/api/rest_v1/page/summary/' + enc + '?redirect=true';
+    fetch(api)
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(r.status); })
+      .then(function (data) {
+        if (data.thumbnail && data.thumbnail.source) {
+          showImage(data.thumbnail.source, data.content_urls.desktop.page, data.title);
+        } else if (fallback) {
+          fallback();
+        }
+      })
+      .catch(function () { if (fallback) fallback(); });
+  }
+
+  var drugName = "{{.Detail.Denominazione | js}}";
+  // PaAssociati may contain multiple ingredients (e.g. "AMOXICILLINA + ACIDO CLAVULANICO"); use first.
+  var paRaw = "{{.Detail.PaAssociati | js}}";
+  var pa    = paRaw.split(/\s*[+\/,]\s*/)[0].trim();
+  // AIFA names are uppercase; Wikipedia titles need Title Case (first letter upper, rest lower)
+  function titleCase(s) { return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase(); }
+  var paIT = titleCase(pa);
+  // For EN Wikipedia use the Italian form as-is (often the same) then fallback
+  // lookup chain: IT active ingredient → EN active ingredient → IT drug short name (title-cased)
+  var drugShort = titleCase(drugName.split(/\s+/)[0]);
+  tryWikipedia(paIT, 'it', function () {
+    tryWikipedia(paIT, 'en', function () {
+      tryWikipedia(drugShort, 'it', null);
+    });
+  });
+}());
+</script>
 
 </body>
 </html>

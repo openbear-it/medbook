@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{.Titolo}} — MedBook</title>
+<style>
+:root {
+  --blue:    #1a56db;
+  --blue-dk: #1142af;
+  --green:   #057a55;
+  --red:     #c81e1e;
+  --gray:    #6b7280;
+  --bg:      #f3f4f6;
+  --card:    #ffffff;
+  --border:  #e5e7eb;
+  --text:    #111827;
+  --muted:   #6b7280;
+}
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+       background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
+
+header { background: var(--blue); color: #fff; padding: .9rem 1.5rem;
+         display: flex; align-items: center; gap: 1rem; }
+header h1 { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 1.4rem; font-weight: 700; letter-spacing: -.5px;
+            color: #fff; margin: 0; padding: 0; line-height: 1.5;
+            letter-spacing: normal; text-transform: none; }
+header p  { font-size: .8rem; opacity: .85; }
+header a.back { color: rgba(255,255,255,.8); text-decoration: none; font-size: .85rem; }
+header a.back:hover { color: #fff; }
+
+nav.topnav {
+  background: var(--blue-dk); display: flex; align-items: center;
+  gap: .25rem; padding: .3rem 1.5rem; flex-wrap: wrap;
+}
+nav.topnav a {
+  color: rgba(255,255,255,.85); text-decoration: none;
+  font-size: .82rem; font-weight: 500; padding: .3rem .65rem;
+  border-radius: 4px; transition: background .12s;
+}
+nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); color: #fff; }
+
+main { max-width: 900px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+
+.page-heading { margin-bottom: 1.2rem; }
+.page-heading h2 { font-size: 1.15rem; font-weight: 700; }
+.page-heading p  { font-size: .88rem; color: var(--muted); margin-top: .2rem; }
+
+.search-wrap { display: flex; gap: .5rem; margin-bottom: 1.5rem; }
+.search-wrap input[type=text] {
+  flex: 1; padding: .65rem 1rem; border: 1.5px solid var(--border);
+  border-radius: 6px; font-size: 1rem; outline: none;
+  transition: border-color .15s;
+}
+.search-wrap input[type=text]:focus { border-color: var(--blue); }
+.search-wrap button {
+  padding: .65rem 1.4rem; background: var(--blue); color: #fff;
+  border: none; border-radius: 6px; font-size: .95rem; cursor: pointer;
+  transition: background .15s;
+}
+.search-wrap button:hover { background: var(--blue-dk); }
+
+.results-hdr { color: var(--muted); font-size: .88rem; margin-bottom: .9rem; }
+.results-hdr strong { color: var(--text); }
+
+.drug-card {
+  background: var(--card); border: 1px solid var(--border); border-radius: 8px;
+  padding: 1rem 1.2rem; margin-bottom: .75rem;
+  transition: box-shadow .15s, border-color .15s;
+}
+.drug-card:hover { box-shadow: 0 2px 10px rgba(0,0,0,.09); border-color: #c0c7d3; }
+.drug-card a { text-decoration: none; color: inherit; display: block; }
+.drug-name { font-size: 1.05rem; font-weight: 700; color: var(--blue); margin-bottom: .2rem; }
+.drug-company { font-size: .85rem; color: var(--muted); margin-bottom: .5rem; }
+.drug-meta { display: flex; flex-wrap: wrap; gap: .4rem; font-size: .8rem; }
+
+.tag {
+  display: inline-flex; align-items: center; gap: .3rem;
+  padding: .2rem .55rem; border-radius: 12px; background: #eff6ff;
+  color: #1d4ed8; border: 1px solid #bfdbfe; font-size: .78rem;
+  text-decoration: none;
+}
+.tag:hover { background: #dbeafe; }
+.tag.atc   { background: #f0fdf4; color: var(--green); border-color: #bbf7d0; }
+.tag.forme { background: #fefce8; color: #854d0e;    border-color: #fde047; }
+.tag.qty   { background: #f5f3ff; color: #6d28d9;    border-color: #ddd6fe; }
+
+.badge {
+  display: inline-block; padding: .15rem .5rem; border-radius: 4px;
+  font-size: .74rem; font-weight: 600; text-transform: uppercase;
+}
+.badge-green { background: #d1fae5; color: var(--green); }
+.badge-red   { background: #fee2e2; color: var(--red);   }
+.badge-gray  { background: #f3f4f6; color: var(--gray);  }
+
+.pagination { display: flex; gap: .4rem; margin-top: 1.5rem; flex-wrap: wrap; }
+.pagination a, .pagination span {
+  padding: .35rem .7rem; border-radius: 5px; font-size: .85rem; text-decoration: none;
+  border: 1px solid var(--border); color: var(--text);
+}
+.pagination a:hover { background: #eff6ff; border-color: var(--blue); }
+.pagination .active  { background: var(--blue); color: #fff; border-color: var(--blue); }
+.pagination .disabled { color: var(--muted); pointer-events: none; }
+
+.hint { text-align: center; padding: 3rem 1rem; color: var(--muted); }
+.hint h2 { font-size: 1.1rem; margin-bottom: .5rem; }
+.hint p  { font-size: .88rem; }
+
+/* ── Autocomplete dropdown ── */
+.ac-wrap { position: relative; flex: 1; }
+.ac-wrap input[type=text] {
+  width: 100%; padding: .65rem 1rem; border: 1.5px solid var(--border);
+  border-radius: 6px; font-size: 1rem; outline: none;
+  transition: border-color .15s;
+}
+.ac-wrap input[type=text]:focus { border-color: var(--blue); }
+#ac-list-drop {
+  display: none; position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+  background: var(--card); border: 1.5px solid var(--blue); border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.12); z-index: 100; overflow: hidden;
+}
+.ac-item {
+  padding: .6rem 1rem; cursor: pointer;
+  border-bottom: 1px solid var(--border); font-size: .9rem;
+}
+.ac-item:last-child { border-bottom: none; }
+.ac-item:hover, .ac-item.ac-active { background: #eff6ff; color: var(--blue); font-weight: 600; }
+
+/* ── Autocomplete dropdown ── */
+.ac-wrap { position: relative; flex: 1; }
+.ac-wrap input[type=text] {
+  width: 100%; padding: .65rem 1rem; border: 1.5px solid var(--border);
+  border-radius: 6px; font-size: 1rem; outline: none;
+  transition: border-color .15s;
+}
+.ac-wrap input[type=text]:focus { border-color: var(--blue); }
+#ac-list-drop {
+  display: none; position: absolute; top: calc(100% + 2px); left: 0; right: 0;
+  background: var(--card); border: 1.5px solid var(--blue); border-radius: 6px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.12); z-index: 100; overflow: hidden;
+}
+.ac-item {
+  padding: .6rem 1rem; cursor: pointer;
+  border-bottom: 1px solid var(--border); font-size: .9rem;
+}
+.ac-item:last-child { border-bottom: none; }
+.ac-item:hover, .ac-item.ac-active { background: #eff6ff; color: var(--blue); font-weight: 600; }
+
+footer { text-align: center; font-size: .78rem; color: var(--muted); padding: 2rem 0 1rem; }
+footer a { color: var(--gray); }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>💊 MedBook</h1>
+    <p>Banca Dati Farmaci AIFA — Consultazione offline</p>
+  </div>
+</header>
+<nav class="topnav">
+  <a href="/search">🔍 Ricerca</a>
+  <a href="/drugs">📋 Catalogo A–Z</a>
+  <a href="/drugs/ingredient" {{if eq .Tipo "pa"}}class="active"{{end}}>🧪 Per P.A.</a>
+  <a href="/drugs/company" {{if eq .Tipo "azienda"}}class="active"{{end}}>🏭 Per Azienda</a>
+  <a href="/api/docs">📖 API</a>
+</nav>
+
+<main>
+  <div class="page-heading">
+    <h2>{{.Icona}} Farmaci per {{.Titolo}}</h2>
+    <p>Sfoglia tutti i farmaci associati a uno specifico {{if eq .Tipo "pa"}}principio attivo{{else}}produttore{{end}}.</p>
+  </div>
+
+  <form method="get" action="{{.BaseURL}}" class="search-wrap" id="lista-form">
+    <div class="ac-wrap">
+      <input type="text" name="q" id="lista-input" value="{{.Query}}"
+             placeholder="{{if eq .Tipo "pa"}}Es. Paracetamolo, Amoxicillina…{{else}}Es. Angelini, Pfizer…{{end}}"
+             autofocus autocomplete="off" spellcheck="false">
+      <div id="ac-list-drop"></div>
+    </div>
+    <button type="submit">Cerca</button>
+  </form>
+
+  {{if .Query}}
+    {{if .Results}}
+      <div class="results-hdr">
+        <strong>{{.Total}}</strong> farmac{{if ne .Total 1}}i trovati{{else}}o trovato{{end}} per
+        {{if eq .Tipo "pa"}}principio attivo{{else}}azienda{{end}}
+        "<strong>{{.Query}}</strong>"
+        — pagina {{add .Page 1}} di {{.Pages}}
+      </div>
+
+      {{range .Results}}
+      <div class="drug-card">
+        <a href="/drug/{{.CodFarmaco}}">
+          <div class="drug-name">{{.Denominazione}}</div>
+          <div class="drug-company">{{.RagioneSociale}}</div>
+          <div class="drug-meta">
+            {{if .CodiceATC}}
+              <span class="tag atc">ATC: {{.CodiceATC}}</span>
+            {{end}}
+            {{if .PaAssociati}}
+              <span class="tag">{{.PaAssociati}}</span>
+            {{end}}
+            {{range .Forme}}
+              <span class="tag forme">{{.}}</span>
+            {{end}}
+            <span class="tag qty">{{.NumConfezioni}} confezioni</span>
+            {{if .PrezzoSSN}}<span class="tag" style="background:#f0fdf4;color:#166534;border-color:#86efac">💶 €&nbsp;{{.PrezzoSSN}} SSN</span>{{end}}
+            <span class="badge {{badgeClass .StatoAmm}}">{{.StatoAmm}}</span>
+          </div>
+        </a>
+      </div>
+      {{end}}
+
+      {{if gt .Pages 1}}
+      <nav class="pagination">
+        {{if gt .Page 0}}
+          <a href="{{.BaseURL}}?q={{.Query}}&p={{sub .Page 1}}">← Prec</a>
+        {{else}}
+          <span class="disabled">← Prec</span>
+        {{end}}
+
+        {{range seq .Page .Pages}}
+          {{if eq . $.Page}}
+            <span class="active">{{add . 1}}</span>
+          {{else}}
+            <a href="{{$.BaseURL}}?q={{$.Query}}&p={{.}}">{{add . 1}}</a>
+          {{end}}
+        {{end}}
+
+        {{if lt .Page (sub .Pages 1)}}
+          <a href="{{.BaseURL}}?q={{.Query}}&p={{add .Page 1}}">Succ →</a>
+        {{else}}
+          <span class="disabled">Succ →</span>
+        {{end}}
+      </nav>
+      {{end}}
+
+    {{else}}
+      <div class="hint">
+        <h2>Nessun risultato per “{{.Query}}”</h2>
+        <p>Prova con un termine diverso o controlla la grafia.</p>
+      </div>
+    {{end}}
+
+  {{else}}
+    <div class="hint">
+      <h2>Inizia la ricerca</h2>
+      {{if eq .Tipo "pa"}}
+        <p>Inserisci un principio attivo per trovare tutti i farmaci che lo contengono.<br>
+           Es. <em>Paracetamolo</em>, <em>Amoxicillina</em>, <em>Ibuprofene</em></p>
+      {{else}}
+        <p>Inserisci il nome dell'azienda per trovare tutti i suoi farmaci.<br>
+           Es. <em>Angelini</em>, <em>Pfizer</em>, <em>Novartis</em></p>
+      {{end}}
+    </div>
+  {{end}}
+</main>
+
+<footer>
+  Dati: <a href="https://www.aifa.gov.it" target="_blank">AIFA — Agenzia Italiana del Farmaco</a>
+  (licenza CC-BY 4.0) &nbsp;|&nbsp; MedBook — consultazione offline
+</footer>
+
+<script>
+(function () {
+  var tipo = '{{.Tipo}}';
+  var apiUrl = tipo === 'pa' ? '/api/autocomplete/pa' : '/api/autocomplete/company';
+
+  var input    = document.getElementById('lista-input');
+  var dropdown = document.getElementById('ac-list-drop');
+  if (!input || !dropdown) return;
+
+  var timer, activeIndex = -1, items = [];
+
+  function hide() {
+    dropdown.style.display = 'none';
+    activeIndex = -1;
+    items = [];
+  }
+
+  function esc(s) {
+    return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function show(suggestions) {
+    if (!suggestions || !suggestions.length) { hide(); return; }
+    dropdown.innerHTML = '';
+    items = suggestions;
+    suggestions.forEach(function (name, i) {
+      var div = document.createElement('div');
+      div.className = 'ac-item';
+      div.textContent = name;
+      div.addEventListener('mousedown', function (e) {
+        e.preventDefault();
+        input.value = name;
+        hide();
+        document.getElementById('lista-form').submit();
+      });
+      dropdown.appendChild(div);
+    });
+    dropdown.style.display = 'block';
+    activeIndex = -1;
+  }
+
+  function setActive(idx) {
+    var els = dropdown.querySelectorAll('.ac-item');
+    els.forEach(function (el, i) { el.classList.toggle('ac-active', i === idx); });
+    activeIndex = idx;
+    if (idx >= 0 && idx < items.length) input.value = items[idx];
+  }
+
+  input.addEventListener('input', function () {
+    clearTimeout(timer);
+    var q = input.value.trim();
+    if (q.length < 2) { hide(); return; }
+    timer = setTimeout(function () {
+      fetch(apiUrl + '?q=' + encodeURIComponent(q))
+        .then(function (r) { return r.json(); })
+        .then(show)
+        .catch(function () { hide(); });
+    }, 260);
+  });
+
+  input.addEventListener('keydown', function (e) {
+    if (!items.length) return;
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setActive(Math.min(activeIndex + 1, items.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setActive(Math.max(activeIndex - 1, -1));
+    } else if (e.key === 'Escape') {
+      hide();
+    } else if (e.key === 'Enter' && activeIndex >= 0) {
+      e.preventDefault();
+      input.value = items[activeIndex];
+      hide();
+      document.getElementById('lista-form').submit();
+    }
+  });
+
+  document.addEventListener('click', function (e) {
+    if (!dropdown.contains(e.target) && e.target !== input) hide();
+  });
+}());
+</script>
+
+</body>
+</html>

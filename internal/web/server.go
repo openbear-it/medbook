@@ -33,6 +33,30 @@ func NewServer(store *db.Store, port string) *Server {
 		"seq":      pageSeq,
 		"join":     strings.Join,
 		"hasLinks": func(fi, rcp string) bool { return fi != "" || rcp != "" },
+		"alpha": func() []string {
+			s := make([]string, 26)
+			for i := range s {
+				s[i] = string(rune('A' + i))
+			}
+			return s
+		},
+		"uniqueDitte": func(items []db.PrezzoEquivalente) int {
+			seen := map[string]struct{}{}
+			for _, it := range items {
+				if it.Ditta != "" {
+					seen[it.Ditta] = struct{}{}
+				}
+			}
+			return len(seen)
+		},
+		"firstPA": func(s string) string {
+			for _, sep := range []string{" + ", "+", ", ", ","} {
+				if i := strings.Index(s, sep); i > 0 {
+					return strings.TrimSpace(s[:i])
+				}
+			}
+			return s
+		},
 		"badgeClass": func(stato string) string {
 			switch strings.ToUpper(stato) {
 			case "AUTORIZZATA":
@@ -51,16 +75,43 @@ func NewServer(store *db.Store, port string) *Server {
 // Listen starts the HTTP server and blocks until an error occurs.
 func (s *Server) Listen() error {
 	mux := http.NewServeMux()
+	// ── English routes (canonical) ───────────────────────────────────────────
 	mux.HandleFunc("GET /", s.handleRoot)
-	mux.HandleFunc("GET /medbook", s.handleSearch)
-	mux.HandleFunc("GET /farmaco/{codFarmaco}", s.handleDrug)
+	mux.HandleFunc("GET /search", s.handleSearch)
+	mux.HandleFunc("GET /drug/{codFarmaco}", s.handleDrug)
+	mux.HandleFunc("GET /drugs", s.handleDrugsAll)
+	mux.HandleFunc("GET /drugs/ingredient", s.handleFarmaciPA)
+	mux.HandleFunc("GET /drugs/company", s.handleFarmaciAzienda)
+	mux.HandleFunc("GET /equivalents/{codiceGruppo}", s.handleEquivalenti)
+	// ── Italian routes (redirect to English) ─────────────────────────────────
+	mux.HandleFunc("GET /medbook", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/search"+"?"+r.URL.RawQuery, http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /farmaco/{codFarmaco}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/drug/"+r.PathValue("codFarmaco"), http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /farmaci/pa", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/drugs/ingredient?"+r.URL.RawQuery, http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /farmaci/azienda", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/drugs/company?"+r.URL.RawQuery, http.StatusMovedPermanently)
+	})
+	mux.HandleFunc("GET /equivalenti/{codiceGruppo}", func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, "/equivalents/"+r.PathValue("codiceGruppo"), http.StatusMovedPermanently)
+	})
+	// ── API ───────────────────────────────────────────────────────────────────
 	mux.HandleFunc("GET /api/search", s.handleAPISearch)
 	mux.HandleFunc("GET /api/autocomplete", s.handleAutocomplete)
+	mux.HandleFunc("GET /api/autocomplete/pa", s.handleAutocompletePA)
+	mux.HandleFunc("GET /api/autocomplete/company", s.handleAutocompleteCompany)
 	mux.HandleFunc("GET /api/drug/{codFarmaco}", s.handleAPIDrug)
 	mux.HandleFunc("GET /api/package/{codiceAIC}", s.handleAPIPackage)
 	mux.HandleFunc("GET /api/atc/{code}", s.handleAPIByATC)
 	mux.HandleFunc("GET /api/stats", s.handleAPIStats)
 	mux.HandleFunc("GET /api/shortages", s.handleAPIShortages)
+	mux.HandleFunc("GET /api/equivalents/{codiceGruppo}", s.handleAPIEquivalents)
+	mux.HandleFunc("GET /api/pa/{nome}", s.handleAPIByPA)
+	mux.HandleFunc("GET /api/company/{nome}", s.handleAPIByCompany)
 	mux.HandleFunc("GET /api/openapi.json", s.handleOpenAPISpec)
 	mux.HandleFunc("GET /api/docs", s.handleSwaggerUI)
 	mux.HandleFunc("GET /ping", func(w http.ResponseWriter, r *http.Request) {
@@ -77,11 +128,13 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	http.Redirect(w, r, "/medbook", http.StatusFound)
+	http.Redirect(w, r, "/search", http.StatusFound)
 }
 
 type searchPageData struct {
 	Query   string
+	PA      string
+	Azienda string
 	Results []db.SearchResult
 	Total   int64
 	Page    int
@@ -90,12 +143,18 @@ type searchPageData struct {
 
 func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query().Get("q")
+	pa := strings.TrimSpace(r.URL.Query().Get("pa"))
+	azienda := strings.TrimSpace(r.URL.Query().Get("azienda"))
 	page := intParam(r, "p", 0)
 
-	data := searchPageData{Query: q, Page: page}
+	data := searchPageData{Query: q, PA: pa, Azienda: azienda, Page: page}
 
-	if q != "" {
-		results, total, err := s.store.SearchFarmaci(r.Context(), q, page, pageSize)
+	if q != "" || pa != "" || azienda != "" {
+		results, total, err := s.store.SearchFarmaciFiltered(r.Context(), db.SearchParams{
+			Query:   q,
+			PA:      pa,
+			Azienda: azienda,
+		}, page, pageSize)
 		if err != nil {
 			http.Error(w, "Errore nella ricerca: "+err.Error(), http.StatusInternalServerError)
 			return
@@ -105,7 +164,7 @@ func (s *Server) handleSearch(w http.ResponseWriter, r *http.Request) {
 		data.Pages = int(math.Ceil(float64(total) / float64(pageSize)))
 	}
 
-	s.render(w, "index.html", data)
+	s.render(w, "search.html", data)
 }
 
 type detailPageData struct {
@@ -130,23 +189,29 @@ func (s *Server) handleDrug(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	s.render(w, "detail.html", detailPageData{
+	s.render(w, "drug.html", detailPageData{
 		Detail: detail,
 		Query:  r.URL.Query().Get("q"),
 	})
 }
 
-// handleAPISearch returns JSON search results (for progressive enhancement / external tools).
+// handleAPISearch returns JSON search results. Supports q (fulltext), pa (principio attivo), azienda (company) filters.
 func (s *Server) handleAPISearch(w http.ResponseWriter, r *http.Request) {
 	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	pa := strings.TrimSpace(r.URL.Query().Get("pa"))
+	azienda := strings.TrimSpace(r.URL.Query().Get("azienda"))
 	page := intParam(r, "p", 0)
-	if q == "" {
+	if q == "" && pa == "" && azienda == "" {
 		w.Header().Set("Content-Type", "application/json")
 		w.Write([]byte(`{"results":[],"total":0}`))
 		return
 	}
 
-	results, total, err := s.store.SearchFarmaci(r.Context(), q, page, pageSize)
+	results, total, err := s.store.SearchFarmaciFiltered(r.Context(), db.SearchParams{
+		Query:   q,
+		PA:      pa,
+		Azienda: azienda,
+	}, page, pageSize)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -177,6 +242,44 @@ func (s *Server) handleAutocomplete(w http.ResponseWriter, r *http.Request) {
 		suggestions = []db.AutocompleteSuggestion{}
 	}
 	json.NewEncoder(w).Encode(suggestions)
+}
+
+// handleAutocompletePA returns up to 8 distinct principio_attivo names matching prefix q.
+func (s *Server) handleAutocompletePA(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	w.Header().Set("Content-Type", "application/json")
+	if len(q) < 2 {
+		w.Write([]byte(`[]`))
+		return
+	}
+	results, err := s.store.AutocompletePA(r.Context(), q, 8)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if results == nil {
+		results = []string{}
+	}
+	json.NewEncoder(w).Encode(results)
+}
+
+// handleAutocompleteCompany returns up to 8 distinct ragione_sociale names matching substring q.
+func (s *Server) handleAutocompleteCompany(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	w.Header().Set("Content-Type", "application/json")
+	if len(q) < 2 {
+		w.Write([]byte(`[]`))
+		return
+	}
+	results, err := s.store.AutocompleteCompany(r.Context(), q, 8)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if results == nil {
+		results = []string{}
+	}
+	json.NewEncoder(w).Encode(results)
 }
 
 // handleOpenAPISpec serves the OpenAPI 3.0 specification as JSON.
@@ -284,6 +387,175 @@ func (s *Server) handleAPIShortages(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+type listaPageData struct {
+	Tipo    string
+	Titolo  string
+	Icona   string
+	BaseURL string
+	Query   string
+	Results []db.SearchResult
+	Total   int64
+	Page    int
+	Pages   int
+}
+
+// handleFarmaciPA renders the paginated list of drugs for a given active ingredient.
+func (s *Server) handleFarmaciPA(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	page := intParam(r, "p", 0)
+	data := listaPageData{
+		Tipo: "pa", Titolo: "Principio attivo", Icona: "🧪",
+		BaseURL: "/drugs/ingredient", Query: q, Page: page,
+	}
+	if q != "" {
+		results, total, err := s.store.SearchByPA(r.Context(), q, page, pageSize)
+		if err != nil {
+			http.Error(w, "Errore: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		data.Results = results
+		data.Total = total
+		data.Pages = int(math.Ceil(float64(total) / float64(pageSize)))
+	}
+	s.render(w, "list.html", data)
+}
+
+// handleFarmaciAzienda renders the paginated list of drugs for a given company.
+func (s *Server) handleFarmaciAzienda(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	page := intParam(r, "p", 0)
+	data := listaPageData{
+		Tipo: "azienda", Titolo: "Azienda farmaceutica", Icona: "🏭",
+		BaseURL: "/drugs/company", Query: q, Page: page,
+	}
+	if q != "" {
+		results, total, err := s.store.SearchByCompany(r.Context(), q, page, pageSize)
+		if err != nil {
+			http.Error(w, "Errore: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		data.Results = results
+		data.Total = total
+		data.Pages = int(math.Ceil(float64(total) / float64(pageSize)))
+	}
+	s.render(w, "list.html", data)
+}
+
+type browsePageData struct {
+	Query   string
+	Letter  string
+	Results []db.SearchResult
+	Total   int64
+	Page    int
+	Pages   int
+}
+
+// handleDrugsAll renders the full catalogue paginated A-Z, with optional text and letter filters.
+func (s *Server) handleDrugsAll(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("q"))
+	letter := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("l")))
+	if len(letter) > 1 {
+		letter = letter[:1]
+	}
+	page := intParam(r, "p", 0)
+
+	results, total, err := s.store.ListDrugs(r.Context(), q, letter, page, pageSize)
+	if err != nil {
+		http.Error(w, "Errore: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.render(w, "browse.html", browsePageData{
+		Query:   q,
+		Letter:  letter,
+		Results: results,
+		Total:   total,
+		Page:    page,
+		Pages:   int(math.Ceil(float64(total) / float64(pageSize))),
+	})
+}
+
+type equivalentiPageData struct {
+	CodiceGruppo string
+	Results      []db.PrezzoEquivalente
+}
+
+// handleEquivalenti renders the HTML equivalents page for a given group.
+func (s *Server) handleEquivalenti(w http.ResponseWriter, r *http.Request) {
+	codiceGruppo := r.PathValue("codiceGruppo")
+	results, err := s.store.GetEquivalentiByGruppo(r.Context(), codiceGruppo)
+	if err != nil {
+		http.Error(w, "Errore: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if results == nil {
+		results = []db.PrezzoEquivalente{}
+	}
+	s.render(w, "equivalents.html", equivalentiPageData{
+		CodiceGruppo: codiceGruppo,
+		Results:      results,
+	})
+}
+
+// handleAPIEquivalents returns all drugs in the same Lista Trasparenza equivalence group.
+func (s *Server) handleAPIEquivalents(w http.ResponseWriter, r *http.Request) {
+	codiceGruppo := r.PathValue("codiceGruppo")
+	w.Header().Set("Content-Type", "application/json")
+	results, err := s.store.GetEquivalentiByGruppo(r.Context(), codiceGruppo)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if results == nil {
+		results = []db.PrezzoEquivalente{}
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"codiceGruppo": codiceGruppo,
+		"results":      results,
+	})
+}
+
+// handleAPIByPA returns paginated drugs that contain the specified active ingredient.
+func (s *Server) handleAPIByPA(w http.ResponseWriter, r *http.Request) {
+	nome := r.PathValue("nome")
+	page := intParam(r, "p", 0)
+	w.Header().Set("Content-Type", "application/json")
+	results, total, err := s.store.SearchByPA(r.Context(), nome, page, pageSize)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if results == nil {
+		results = []db.SearchResult{}
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"principioAttivo": nome,
+		"total":           total,
+		"page":            page,
+		"results":         results,
+	})
+}
+
+// handleAPIByCompany returns paginated drugs for a given pharmaceutical company (substring match).
+func (s *Server) handleAPIByCompany(w http.ResponseWriter, r *http.Request) {
+	nome := r.PathValue("nome")
+	page := intParam(r, "p", 0)
+	w.Header().Set("Content-Type", "application/json")
+	results, total, err := s.store.SearchByCompany(r.Context(), nome, page, pageSize)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if results == nil {
+		results = []db.SearchResult{}
+	}
+	json.NewEncoder(w).Encode(map[string]any{
+		"azienda": nome,
+		"total":   total,
+		"page":    page,
+		"results": results,
+	})
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
 func (s *Server) render(w http.ResponseWriter, name string, data any) {
@@ -338,10 +610,12 @@ const openAPISpec = `{
     "/api/search": {
       "get": {
         "summary": "Ricerca farmaci",
-        "description": "Ricerca fulltext per denominazione, principio attivo o codice ATC/AIC.",
+        "description": "Ricerca avanzata: fulltext + filtri opzionali per principio attivo e azienda farmaceutica.",
         "parameters": [
-          { "name": "q", "in": "query", "required": true, "description": "Testo di ricerca", "schema": { "type": "string", "minLength": 1 } },
-          { "name": "p", "in": "query", "required": false, "description": "Pagina (0-based)", "schema": { "type": "integer", "default": 0 } }
+          { "name": "q",       "in": "query", "required": false, "description": "Testo di ricerca (denominazione, AIC, ATC)", "schema": { "type": "string" } },
+          { "name": "pa",      "in": "query", "required": false, "description": "Principio attivo (sottostringa, case-insensitive)", "schema": { "type": "string" } },
+          { "name": "azienda", "in": "query", "required": false, "description": "Azienda farmaceutica (sottostringa, case-insensitive)", "schema": { "type": "string" } },
+          { "name": "p",       "in": "query", "required": false, "description": "Pagina (0-based)", "schema": { "type": "integer", "default": 0 } }
         ],
         "responses": {
           "200": {
@@ -383,6 +657,36 @@ const openAPISpec = `{
                 }
               }
             }
+          }
+        }
+      }
+    },
+    "/api/autocomplete/pa": {
+      "get": {
+        "summary": "Suggerimenti principi attivi",
+        "description": "Restituisce fino a 8 nomi distinti di principi attivi che iniziano con il prefisso fornito. Richiede almeno 2 caratteri.",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "description": "Prefisso (min 2 caratteri)", "schema": { "type": "string", "minLength": 2 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array di nomi",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
+          }
+        }
+      }
+    },
+    "/api/autocomplete/company": {
+      "get": {
+        "summary": "Suggerimenti aziende farmaceutiche",
+        "description": "Restituisce fino a 8 nomi distinti di aziende che contengono la sottostringa fornita. Richiede almeno 2 caratteri.",
+        "parameters": [
+          { "name": "q", "in": "query", "required": true, "description": "Sottostringa (min 2 caratteri)", "schema": { "type": "string", "minLength": 2 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Array di nomi",
+            "content": { "application/json": { "schema": { "type": "array", "items": { "type": "string" } } } }
           }
         }
       }
@@ -493,6 +797,87 @@ const openAPISpec = `{
         }
       }
     },
+    "/api/equivalents/{codiceGruppo}": {
+      "get": {
+        "summary": "Equivalenti terapeutici",
+        "description": "Tutti i farmaci dello stesso gruppo di equivalenza (Lista Trasparenza AIFA).",
+        "parameters": [
+          { "name": "codiceGruppo", "in": "path", "required": true, "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Farmaci nel gruppo di equivalenza",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "codiceGruppo": { "type": "string" },
+                    "results": { "type": "array", "items": { "$ref": "#/components/schemas/PrezzoEquivalente" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pa/{nome}": {
+      "get": {
+        "summary": "Farmaci per principio attivo",
+        "description": "Ricerca paginata per principio attivo (prefisso, case-insensitive).",
+        "parameters": [
+          { "name": "nome", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Nome o prefisso del principio attivo" },
+          { "name": "p", "in": "query", "required": false, "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Risultati per principio attivo",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "principioAttivo": { "type": "string" },
+                    "total":   { "type": "integer" },
+                    "page":    { "type": "integer" },
+                    "results": { "type": "array", "items": { "$ref": "#/components/schemas/SearchResult" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/company/{nome}": {
+      "get": {
+        "summary": "Farmaci per azienda farmaceutica",
+        "description": "Ricerca paginata per ragione sociale (sottostringa, case-insensitive).",
+        "parameters": [
+          { "name": "nome", "in": "path", "required": true, "schema": { "type": "string" }, "description": "Nome o parte della ragione sociale" },
+          { "name": "p", "in": "query", "required": false, "schema": { "type": "integer", "default": 0 } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Risultati per azienda farmaceutica",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "azienda": { "type": "string" },
+                    "total":   { "type": "integer" },
+                    "page":    { "type": "integer" },
+                    "results": { "type": "array", "items": { "$ref": "#/components/schemas/SearchResult" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/openapi.json": {
       "get": {
         "summary": "Specifica OpenAPI",
@@ -518,7 +903,8 @@ const openAPISpec = `{
           "codiceAtc":      { "type": "string" },
           "paAssociati":    { "type": "string" },
           "statoAmmvo":     { "type": "string" },
-          "forma":          { "type": "string" }
+          "forma":          { "type": "string" },
+          "PrezzoSSN":      { "type": "string", "description": "Prezzo SSN minimo dalla Lista Trasparenza AIFA (vuoto se non disponibile)" }
         }
       },
       "AutocompleteSuggestion": {
@@ -547,6 +933,36 @@ const openAPISpec = `{
           "notaAIFA":         { "type": "string" },
           "fascia":           { "type": "string" },
           "codiceATC":        { "type": "string" }
+        }
+      },
+      "PrezzoEquivalente": {
+        "type": "object",
+        "description": "Voce dalla Lista Trasparenza AIFA (prezzi SSN e gruppi di equivalenza).",
+        "properties": {
+          "CodiceAIC":       { "type": "string" },
+          "PrincipioAttivo": { "type": "string" },
+          "ATC":             { "type": "string" },
+          "NomeFarmaco":     { "type": "string" },
+          "Confezione":      { "type": "string" },
+          "Ditta":           { "type": "string" },
+          "PrezzoSSN":       { "type": "string" },
+          "PrezzoPubblico":  { "type": "string" },
+          "Differenza":      { "type": "string" },
+          "Nota":            { "type": "string" },
+          "CodiceGruppo":    { "type": "string" }
+        }
+      },
+      "FarmacoOrfano": {
+        "type": "object",
+        "description": "Medicinale orfano designato per malattia rara (Lista AIFA).",
+        "properties": {
+          "CodiceAIC6":      { "type": "string" },
+          "Descrizione":     { "type": "string" },
+          "DataInizio":      { "type": "string" },
+          "ATC":             { "type": "string" },
+          "PrincipioAttivo": { "type": "string" },
+          "Classe":          { "type": "string" },
+          "DataFine":        { "type": "string" }
         }
       }
     }
