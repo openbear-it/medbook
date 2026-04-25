@@ -57,6 +57,24 @@ func NewServer(store *db.Store, port string) *Server {
 			}
 			return s
 		},
+		"splitPAList": func(s string) []string {
+			s = strings.TrimSpace(s)
+			if s == "" {
+				return nil
+			}
+			for _, sep := range []string{" + ", " / ", "/"} {
+				if strings.Contains(s, sep) {
+					var out []string
+					for _, p := range strings.Split(s, sep) {
+						if t := strings.TrimSpace(p); t != "" {
+							out = append(out, t)
+						}
+					}
+					return out
+				}
+			}
+			return []string{s}
+		},
 		"badgeClass": func(stato string) string {
 			switch strings.ToUpper(stato) {
 			case "AUTORIZZATA":
@@ -65,6 +83,16 @@ func NewServer(store *db.Store, port string) *Server {
 				return "badge-red"
 			default:
 				return "badge-gray"
+			}
+		},
+		"cardClass": func(stato string) string {
+			switch strings.ToUpper(stato) {
+			case "AUTORIZZATA":
+				return "drug-card drug-card--ok"
+			case "REVOCATA", "SOSPESA":
+				return "drug-card drug-card--ko"
+			default:
+				return "drug-card"
 			}
 		},
 	}).ParseFS(assets, "assets/templates/*.html"))

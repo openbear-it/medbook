@@ -4,112 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Equivalenti — Gruppo {{.CodiceGruppo}} — MedBook</title>
-<style>
-:root {
-  --blue:    #1a56db;
-  --blue-dk: #1142af;
-  --green:   #057a55;
-  --red:     #c81e1e;
-  --gray:    #6b7280;
-  --bg:      #f3f4f6;
-  --card:    #ffffff;
-  --border:  #e5e7eb;
-  --text:    #111827;
-  --muted:   #6b7280;
-}
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-       background: var(--bg); color: var(--text); font-size: 15px; line-height: 1.5; }
-
-header { background: var(--blue); color: #fff; padding: .9rem 1.5rem;
-         display: flex; align-items: center; gap: 1rem; }
-header h1 { font-size: 1.4rem; font-weight: 700; }
-header p  { font-size: .8rem; opacity: .85; }
-
-nav.topnav {
-  background: var(--blue-dk); display: flex; align-items: center;
-  gap: .25rem; padding: .3rem 1.5rem;
-}
-nav.topnav a {
-  color: rgba(255,255,255,.85); text-decoration: none;
-  font-size: .82rem; font-weight: 500; padding: .3rem .65rem;
-  border-radius: 4px; transition: background .12s;
-}
-nav.topnav a:hover, nav.topnav a.active { background: rgba(255,255,255,.18); color: #fff; }
-
-main { max-width: 1040px; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
-
-/* ── Breadcrumb ── */
-.bc { font-size: .83rem; color: var(--muted); margin-bottom: 1.2rem; }
-.bc a { color: var(--blue); text-decoration: none; }
-.bc a:hover { text-decoration: underline; }
-
-/* ── Card ── */
-.card {
-  background: var(--card); border: 1px solid var(--border); border-radius: 10px;
-  padding: 1.2rem 1.4rem; margin-bottom: 1.4rem;
-}
-.card-title {
-  font-size: .85rem; font-weight: 700; text-transform: uppercase; letter-spacing: .8px;
-  color: var(--muted); border-bottom: 2px solid var(--border);
-  padding-bottom: .4rem; margin-bottom: 1rem;
-}
-.group-badge {
-  display: inline-block; padding: .2rem .55rem; border-radius: 5px;
-  background: #dcfce7; color: #166534; font-size: .85rem; font-family: monospace;
-  border: 1px solid #86efac; font-weight: 700;
-}
-
-/* ── Stats row ── */
-.stats-row { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
-.stat-box {
-  background: #f0fdf4; border: 1px solid #86efac; border-radius: 8px;
-  padding: .6rem 1rem; text-align: center; min-width: 110px;
-}
-.stat-num { font-size: 1.5rem; font-weight: 800; color: #166534; }
-.stat-lbl { font-size: .72rem; text-transform: uppercase; letter-spacing: .4px; color: var(--muted); }
-
-/* ── Equivalents table ── */
-.equiv-table { width: 100%; border-collapse: collapse; font-size: .84rem; }
-.equiv-table th {
-  background: #f9fafb; text-align: left; padding: .5rem .75rem;
-  font-size: .73rem; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .5px; color: var(--muted); border-bottom: 2px solid var(--border);
-  position: sticky; top: 0; z-index: 1;
-}
-.equiv-table td { padding: .55rem .75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
-.equiv-table tr:last-child td { border-bottom: none; }
-.equiv-table tr:hover td { background: #f0fdf4; }
-.equiv-table .aic { font-family: monospace; font-size: .8rem; color: var(--muted); }
-.price-ssn  { font-weight: 700; color: #166534; white-space: nowrap; }
-.price-pub  { font-weight: 600; color: #1e40af; white-space: nowrap; }
-.price-nota { font-size: .78rem; color: var(--muted); }
-.drug-link  { color: var(--blue); text-decoration: none; font-weight: 600; }
-.drug-link:hover { text-decoration: underline; }
-.company    { font-size: .8rem; color: var(--muted); }
-.confezione { font-size: .8rem; max-width: 260px; }
-
-/* ── Empty state ── */
-.empty { text-align: center; padding: 2.5rem; color: var(--muted); font-size: .9rem; }
-
-footer { text-align: center; font-size: .78rem; color: var(--muted); padding: 2rem 0 1rem; }
-footer a { color: var(--gray); }
-</style>
+{{template "styles" .}}
 </head>
 <body>
 
-<header>
-  <div>
-    <h1>💊 MedBook</h1>
-    <p>Banca Dati Farmaci AIFA — Consultazione offline</p>
-  </div>
-</header>
+{{template "siteheader" .}}
 <nav class="topnav">
-  <a href="/search">🔍 Ricerca</a>
-  <a href="/drugs">📋 Catalogo A–Z</a>
-  <a href="/drugs/ingredient">🧪 Per P.A.</a>
-  <a href="/drugs/company">🏭 Per Azienda</a>
-  <a href="/api/docs">📖 API</a>
+  <div class="topnav-inner">
+    <a href="/search">🔍 Ricerca</a>
+    <a href="/drugs">📋 Catalogo A–Z</a>
+    <a href="/drugs/ingredient">🧪 Per P.A.</a>
+    <a href="/drugs/company">🏭 Per Azienda</a>
+    <a href="/api/docs">📖 API</a>
+  </div>
 </nav>
 
 <main>
@@ -123,7 +30,6 @@ footer a { color: var(--gray); }
     <div class="card-title">♻️ Gruppo di equivalenza — Lista Trasparenza AIFA</div>
 
     {{if .Results}}
-    <!-- Stats -->
     {{$n := len .Results}}
     <div class="stats-row">
       <div class="stat-box">
@@ -151,9 +57,7 @@ footer a { color: var(--gray); }
         <tbody>
           {{range .Results}}
           <tr>
-            <td>
-              <a class="drug-link" href="{{if .CodFarmaco}}/drug/{{.CodFarmaco}}{{else}}#{{end}}">{{.NomeFarmaco}}</a>
-            </td>
+            <td><a class="drug-link" href="{{if .CodFarmaco}}/drug/{{.CodFarmaco}}{{else}}#{{end}}">{{.NomeFarmaco}}</a></td>
             <td class="company">{{.Ditta}}</td>
             <td class="confezione">{{.Confezione}}</td>
             <td class="price-ssn">{{if .PrezzoSSN}}€ {{.PrezzoSSN}}{{else}}—{{end}}</td>
@@ -165,15 +69,71 @@ footer a { color: var(--gray); }
       </table>
     </div>
     {{else}}
-    <div class="empty">Nessun farmaco trovato per questo gruppo di equivalenza.</div>
+    <div class="hint">
+      <span class="hint-icon">♻️</span>
+      <h2>Nessun farmaco trovato</h2>
+      <p>Nessun farmaco trovato per questo gruppo di equivalenza.</p>
+    </div>
     {{end}}
   </div>
 </main>
 
-<footer>
-  Data: <a href="https://www.aifa.gov.it" target="_blank">AIFA — Agenzia Italiana del Farmaco</a>
-  (CC-BY 4.0) &nbsp;|&nbsp; MedBook — offline consultation
-</footer>
+{{template "sitefooter" .}}
+</body>
+</html>
 
+  <div class="card">
+    <div class="card-title">♻️ Gruppo di equivalenza — Lista Trasparenza AIFA</div>
+
+    {{if .Results}}
+    {{$n := len .Results}}
+    <div class="stats-row">
+      <div class="stat-box">
+        <div class="stat-num">{{$n}}</div>
+        <div class="stat-lbl">Confezioni</div>
+      </div>
+      <div class="stat-box">
+        <div class="stat-num">{{.Results | uniqueDitte}}</div>
+        <div class="stat-lbl">Ditte</div>
+      </div>
+    </div>
+
+    <div style="overflow-x:auto">
+      <table class="equiv-table">
+        <thead>
+          <tr>
+            <th>Farmaco</th>
+            <th>Ditta</th>
+            <th>Confezione</th>
+            <th>Prezzo SSN</th>
+            <th>Prezzo Pubblico</th>
+            <th>Nota</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{range .Results}}
+          <tr>
+            <td><a class="drug-link" href="{{if .CodFarmaco}}/drug/{{.CodFarmaco}}{{else}}#{{end}}">{{.NomeFarmaco}}</a></td>
+            <td class="company">{{.Ditta}}</td>
+            <td class="confezione">{{.Confezione}}</td>
+            <td class="price-ssn">{{if .PrezzoSSN}}€ {{.PrezzoSSN}}{{else}}—{{end}}</td>
+            <td class="price-pub">{{if .PrezzoPubblico}}€ {{.PrezzoPubblico}}{{else}}—{{end}}</td>
+            <td class="price-nota">{{.Nota}}</td>
+          </tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+    {{else}}
+    <div class="hint">
+      <span class="hint-icon">♻️</span>
+      <h2>Nessun farmaco trovato</h2>
+      <p>Nessun farmaco trovato per questo gruppo di equivalenza.</p>
+    </div>
+    {{end}}
+  </div>
+</main>
+
+{{template "sitefooter" .}}
 </body>
 </html>
